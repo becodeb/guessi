@@ -32,13 +32,23 @@ abierta (DevTools) y los pasos exactos.
 
 ## 2. Importación y dedupe
 
-- [ ] Playlists: enfocar el select «Elige una playlist…» → se cargan; elegir
-      una y «Importar» → aparecen como pendientes con su portada.
+- [ ] Playlists propias: al abrir Biblioteca se listan «Tus playlists» (portada,
+      nombre, cantidad) sin escribir nada; «Importar» en una tarjeta las manda a
+      pendientes con su portada. Escribir filtra esa lista (también privadas).
 - [ ] Playlist > 50 temas: importar una playlist larga y verificar que se
       pagan (`limit=50` + `offset`) y que llegan todos (comparar con la
       playlist en Spotify). No debe llamarse `/playlists/{id}/tracks`.
 - [ ] «Me gusta»: importar → aparecen como pendientes.
-- [ ] Búsqueda: buscar una canción y verificar resultados en pendientes.
+- [ ] Búsqueda en vivo: escribir ≥2 letras busca en Spotify y agrupa
+      Canciones / Álbumes / Playlists de Spotify, con imágenes; los chips
+      «Todo · N» filtran por tipo. «Añadir» agrega el tema a pendientes (chip
+      «En pendientes»), «Importar» baja el álbum o la playlist completa.
+- [ ] Enlace pegado: pegar una URL o URI de Spotify (canción, álbum o
+      playlist) → aparece la tarjeta «Enlace de … detectado» con portada y
+      «Importar». Una playlist privada de la cuenta (p. ej. «Top canciones
+      2025») funciona por enlace aunque no aparezca en el catálogo.
+- [ ] Enlace inválido o acortado (`spotify.link/…`, id truncado) → mensaje
+      «No pudimos leer ese enlace», sin errores en consola.
 - [ ] «Añadir» de a una y «Añadir todo» → los temas pasan a «Lo que sé» y los
       contadores «Pendientes N · Lo que sé M» se actualizan.
 - [ ] Dedupe: importar la misma playlist dos veces → sin duplicados en
@@ -195,14 +205,25 @@ abierta (DevTools) y los pasos exactos.
   - [ ] «Ver respuestas» (footer) rellena todas las canciones con su nombre real
         (bloqueadas) y todos los artistas con los acreditados (bloqueados),
         re-renderiza la grilla y actualiza el chip.
-- [ ] Barra de audio única (Reproducir + «+0,1 s») alimenta a la vez los retos de
-      **canción** y **año**; no hay dos reproductores. Sin Premium: la barra se
+- [ ] Barra de audio única alimenta a la vez los retos de **canción** y **año**;
+      no hay dos reproductores. Arranca en 0,1 s y el botón suma el doble en cada
+      toque (0,2 / 0,4 / 0,8 / 1,6 / 3,2 s) y después siempre 3,2 s; el texto del
+      botón anuncia el **próximo** salto («+0,2 s», «+0,8 s»…). «Reiniciar»
+      vuelve a 0,1 s y está deshabilitado cuando ya estás en 0,1 s. Mientras
+      suena, el botón pasa a «Detener» y corta el clip. Sin Premium: la barra se
       reemplaza por «El audio necesita Spotify Premium».
 - [ ] Tarjetas independientes, cada una con su chip de estado (Adivinado /
-      Con pistas / Revelado / Requiere Premium): «La canción» (solo título,
-      Premium), «El álbum y los artistas» (álbum + artistas, sin Premium),
-      «¿De qué año?» (Premium, con pistas más nuevo/viejo + cercanía) y
-      «La letra».
+      Con pistas / Revelado / Requiere Premium): «La canción» (título **y
+      artistas** en slots, Premium; se resuelve recién con ambos), «El álbum y
+      los artistas» (álbum + artistas, sin Premium), «¿De qué año?» (Premium,
+      con pistas más nuevo/viejo + cercanía) y «La letra». La cabecera muestra
+      un segmento por reto jugable, en verde al resolver.
+- [ ] **Sin spoilers cruzados**: resolver el año no muestra el artista ni el
+      álbum (solo «El año es X»); el banner de una tarjeta no adelanta datos de
+      otra. Al revelar con «Ver respuestas» el banner dice «revelado», no
+      «¡Correcto!».
+- [ ] Tarjetas resueltas (Adivinado): el borde de la tarjeta queda con el
+      acento verde; las reveladas/con pistas no.
 - [ ] Sin Premium: las tarjetas de canción y año muestran «Requiere Spotify
       Premium» en lugar de inputs y no cuentan en el denominador del progreso
       (queda «N/2 resueltos»); álbum y letra siguen jugables.

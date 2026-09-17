@@ -13,14 +13,18 @@ Un modo principal y tres de práctica suelta:
   fuerte, arranca ~72px), **Pixeles** (pixelado real por canvas, bloques
   grandes) y **Color** (borrón enorme + saturación, casi un color plano) — y se
   revela a clics, manteniendo el progreso al cambiar de modo. Debajo, una sola
-  **barra de audio** (Reproducir + 0,1 s) alimenta a la vez los desafíos de
-  **canción** y **año**; y cuatro tarjetas independientes: **La canción** (solo
-  el título), **El álbum y los artistas** (adivinás el álbum y sus artistas, y además cada canción del álbum con su artista en una grilla siempre visible; al resolver revela la portada), **¿De qué año?** (pistas de más nuevo/viejo) y
-  **La letra** (palabra por palabra). Cada tarjeta tiene su chip de estado. El
-  álbum y la letra funcionan **sin Premium**; la canción, el año y el audio se
-  degradan solos (marcados «Requiere Premium») cuando no tenés Premium. La
-  barra «Ver respuestas» lo revela todo en el lugar; «Otra canción» sortea de
-  nuevo.
+  **barra de audio** (Reproducir/Detener + un botón que suma el doble en cada
+  toque: 0,1 → 0,2 → 0,4 → … → 3,2 s, con «Reiniciar») alimenta a la vez los
+  desafíos de **canción** y **año**. Cuatro tarjetas independientes:
+  **La canción** (título y artistas por separado), **El álbum y los artistas**
+  (adivinás el álbum y sus artistas, y además cada canción del álbum con su
+  artista en una grilla siempre visible; al resolver revela la portada),
+  **¿De qué año?** (pistas de más nuevo/viejo, sin spoilers de artista o álbum)
+  y **La letra** (palabra por palabra). Cada tarjeta tiene su chip de estado y
+  las resueltas se marcan con un borde verde. El álbum y la letra funcionan
+  **sin Premium**; la canción, el año y el audio se degradan solos (marcados
+  «Requiere Premium») cuando no tenés Premium. La barra «Ver respuestas» lo
+  revela todo en el lugar; «Otra canción» sortea de nuevo.
 - **Práctica suelta** (los tres juegos originales, por separado):
   - **La primera décima** — instante de sonido (0,1 s, acumulable) y adivinás
     título, artistas y álbum. Requiere **Spotify Premium** (Web Playback SDK).
@@ -54,8 +58,10 @@ Un modo principal y tres de práctica suelta:
    ```
 
 4. Abrí **http://127.0.0.1:8080/** e iniciá sesión con Spotify.
-5. En **Biblioteca**, importá desde playlists, «Me gusta» o búsqueda, y añadí
-   canciones a **«Lo que sé»** para que entren en los juegos.
+5. En **Biblioteca**, buscá canciones, álbumes o playlists (incluidas tus
+   playlists privadas, que aparecen al abrir la vista), o pegá un enlace de
+   Spotify; lo que importes queda en la lista de pendientes y de ahí pasa a
+   **«Lo que sé»** para entrar en los juegos.
 
 ## Deploy en Coolify
 
@@ -112,6 +118,8 @@ src/player.js         Motor Web Playback SDK (clip 0,1 s, prime, volumen)
 src/library.js        Importación, «Lo que sé», dedupe, cache de tracklists
 src/storage.js        localStorage versionado (deoido.v1.*)
 src/match.js          Normalización + alias + Levenshtein (puro)
+src/clip-steps.js     Escalera pura del clip (0,1 s que duplica por toque)
+src/spotify-link.js   Parser puro de enlaces/URIs de Spotify (biblioteca)
 src/ui.js             Helpers DOM (el, toast, skeleton, iconos)
 src/lyrics-engine.js  Motor puro de la letra (tokenizer + máquina de estados)
 src/lyrics.js         Fuente de letras (LRCLIB) + cache local + pegado manual
@@ -119,6 +127,8 @@ src/games/round-game.js  Ronda completa (los cuatro desafíos en uno)
 src/games/*.js        Los tres juegos de práctica suelta
 tests/match.test.mjs  Harness sin framework: node tests/match.test.mjs
 tests/lyrics.test.mjs Harness sin framework de la letra: node tests/lyrics.test.mjs
+tests/spotify-link.test.mjs  Harness sin framework del parser de enlaces
+tests/clip-steps.test.mjs    Harness sin framework de la escalera del clip
 docs/smoke-checklist.md  Chequeo manual de humo
 ```
 
@@ -128,8 +138,10 @@ docs/smoke-checklist.md  Chequeo manual de humo
 npm test
 ```
 
-Corre los dos harness sin framework: `tests/match.test.mjs` (matching) y
-`tests/lyrics.test.mjs` (motor de la letra). Exit 0 = ok.
+Corre los cuatro harness sin framework: `tests/match.test.mjs` (matching),
+`tests/lyrics.test.mjs` (motor de la letra), `tests/spotify-link.test.mjs`
+(parser de enlaces de Spotify) y `tests/clip-steps.test.mjs` (escalera del
+clip). Exit 0 = ok.
 
 ## Letras (LRCLIB)
 

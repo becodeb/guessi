@@ -39,7 +39,7 @@ function notifyRateLimited(retryAfterMs) {
 const ITEM_FIELDS = "id,name,artists(id,name),album(id,name,album_type,release_date,images,artists(id,name),total_tracks),duration_ms";
 const ALBUM_TRACK_FIELDS = "id,name,artists(id,name),duration_ms,track_number";
 
-async function request(path, { method = "GET", body, params } = {}) {
+async function request(path, { method = "GET", body, params, signal } = {}) {
   const token = await auth.getAccessToken();
   if (!token) throw new SessionError();
 
@@ -56,8 +56,10 @@ async function request(path, { method = "GET", body, params } = {}) {
   const attempt = async (retried) => {
     let res;
     try {
-      res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    } catch {
+      res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal });
+    } catch (err) {
+      // Aborts are caller-driven (superseded search) — never a connection error.
+      if (err?.name === "AbortError") throw err;
       throw new ApiError(0, "No se pudo conectar con Spotify");
     }
 
@@ -145,15 +147,16 @@ async function pageAll(firstPage, extractItems) {
 
 export async function getPlaylists() {
   const first = await request("/me/playlists", { params: { limit: 50 } });
-  return pageAll(first, (p) => p.items ?? []);
+  return pageAll(first, (p) => (p.items ?? []).filter((pl) => pl?.id));
 }
 
 export async function getPlaylistItems(id) {
   const first = await request(`/playlists/${id}/items`, {
     params: { limit: 50, fields: `items(${ITEM_FIELDS}),next` },
   });
+  // `/items` items carry `.item`; the older `.track` key is kept as a fallback.
   const tracks = await pageAll(first, (p) =>
-    (p.items ?? []).map((it) => it.track ?? it).filter((t) => t && t.id)
+    (p.items ?? []).map((it) => it.track ?? it.item ?? it).filter((t) => t && t.id)
   );
   return tracks;
 }
@@ -167,11 +170,35 @@ export async function getLikedTracks() {
   );
 }
 
-export async function searchTracks(query) {
+/**
+ * Unified catalog search: tracks + albums + playlists in one round trip.
+ * Null entries (Spotify returns them for unavailable items) are dropped so
+ * views can render the groups without defensive checks.
+ * @param {string} query
+ * @param {AbortSignal} [signal] caller-owned, to cancel superseded searches
+ */
+export async function searchCatalog(query, signal) {
   const data = await request("/search", {
-    params: { type: "track", limit: 50, q: query },
+    params: { type: "track,album,playlist", limit: 12, q: query },
+    signal,
   });
-  return (data.tracks?.items ?? []).filter((t) => t && t.id);
+  return {
+    tracks: (data.tracks?.items ?? []).filter((t) => t?.id),
+    albums: (data.albums?.items ?? []).filter((a) => a?.id),
+    playlists: (data.playlists?.items ?? []).filter((p) => p?.id),
+  };
+}
+
+export async function getPlaylist(id) {
+  return request(`/playlists/${id}`);
+}
+
+export async function getTrack(id) {
+  return request(`/tracks/${id}`);
+}
+
+export async function getArtist(id) {
+  return request(`/artists/${id}`);
 }
 
 export async function getAlbum(id) {

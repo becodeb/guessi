@@ -7,6 +7,8 @@ import * as api from "./spotify-api.js";
 import * as player from "./player.js";
 import * as library from "./library.js";
 import * as ui from "./ui.js";
+import * as match from "./match.js";
+import { parseSpotifyRef, looksLikeSpotifyLink } from "./spotify-link.js";
 import * as clipGame from "./games/clip-game.js";
 import * as albumGame from "./games/album-game.js";
 import * as yearGame from "./games/year-game.js";
@@ -427,18 +429,98 @@ function roundVisual() {
 
 // --- library view ------------------------------------------------------------------------
 
-let lastPlaylistId = null;
 let lastQuery = "";
+
+// Own playlists are fetched once per session and reused by the browse grid,
+// the live search filter and the import cards.
+let ownPlaylists = null;
+let ownPlaylistsPromise = null;
+
+function loadOwnPlaylists() {
+  if (ownPlaylists) return Promise.resolve(ownPlaylists);
+  if (!ownPlaylistsPromise) {
+    ownPlaylistsPromise = api
+      .getPlaylists()
+      .then((list) => {
+        ownPlaylists = list;
+        return list;
+      })
+      .finally(() => {
+        ownPlaylistsPromise = null;
+      });
+  }
+  return ownPlaylistsPromise;
+}
+
+/** Trailing-edge debounce with a cancel hook. */
+function debounce(fn, ms) {
+  let timer = null;
+  const wrapped = (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+  wrapped.cancel = () => clearTimeout(timer);
+  return wrapped;
+}
+
+const KIND_LABEL = { track: "canción", album: "álbum", playlist: "playlist", artist: "artista" };
+
+function artistsText(item) {
+  return (item?.artists ?? []).map((a) => a?.name).filter(Boolean).join(", ");
+}
+
+function yearOf(item) {
+  return String(item?.release_date ?? "").slice(0, 4);
+}
+
+/** Cover <img> with an icon fallback for missing or broken URLs. */
+function coverEl(url, className, iconName = "note", alt = "") {
+  if (!url) {
+    return ui.el("div", { class: `${className} ${className}--fallback`, "aria-hidden": "true" }, ui.icon(iconName));
+  }
+  const img = ui.el("img", { class: className, alt, loading: "lazy", src: url });
+  img.addEventListener("error", () =>
+    img.replaceWith(
+      ui.el("div", { class: `${className} ${className}--fallback`, "aria-hidden": "true" }, ui.icon(iconName))
+    )
+  );
+  return img;
+}
+
+function coverUrl(item, kind) {
+  if (kind === "track") return item?.album?.images?.[0]?.url;
+  return item?.images?.[0]?.url;
+}
+
+function importMessage(label, { fetched = 0, added = 0 } = {}) {
+  if (fetched === 0) return `${label}: no se encontraron canciones`;
+  if (added === 0) return `${label}: ya estaban en pendientes o en «Lo que sé»`;
+  if (added === 1) return fetched > 1 ? `${label}: 1 nueva de ${fetched}` : `${label}: 1 canción añadida`;
+  if (added < fetched) return `${label}: ${added} nuevas de ${fetched}`;
+  return `${label}: ${added} canciones añadidas`;
+}
 
 function renderLibrary(view) {
   view.innerHTML = "";
-  view.append(ui.el("h1", { class: "display display--md", text: "Tu biblioteca" }));
-  view.append(ui.el("p", { class: "muted-note", text: "Importa canciones y añádelas a «Lo que sé» para que entren en los juegos." }));
+  view.append(
+    ui.el("h1", { class: "display display--md", text: "Tu biblioteca" }),
+    ui.el("p", { class: "muted-note", text: "Busca canciones, álbumes o playlists y súmalas a «Lo que sé» para que entren en los juegos." })
+  );
 
   const counts = ui.el("p", { class: "lib-counts" });
   const pendingHost = ui.el("div");
   const poolHost = ui.el("div");
   const errorHost = ui.el("div");
+
+  // --- local search state ----------------------------------------------------
+  let query = lastQuery;
+  let filter = "all";
+  let results = null; // {kind:"catalog",…} | {kind:"link",…} | {kind:"badlink"} | null
+  let loading = false;
+  let browseFailed = false;
+  let seq = 0;
+  let searchAbort = null;
+  const imported = new Set();
 
   const refresh = () => {
     counts.textContent = `Pendientes ${library.getPending().length} · Lo que sé ${library.getPoolCount()}`;
@@ -448,7 +530,7 @@ function renderLibrary(view) {
     pendingHost.innerHTML = "";
     const pending = library.getPending();
     if (pending.length === 0) {
-      pendingHost.append(ui.el("p", { class: "muted-note", text: "Sin pendientes. Importa playlists, «Me gusta» o busca canciones." }));
+      pendingHost.append(ui.el("p", { class: "muted-note", text: "Sin pendientes. Importa una playlist o un álbum, o busca canciones." }));
       return;
     }
     const list = ui.el("ul", { class: "pending-list" });
@@ -530,70 +612,28 @@ function renderLibrary(view) {
     );
   };
 
-  // --- import toolbar ---
-  const playlistSelect = ui.el("select", { class: "select", "aria-label": "Elegir playlist" },
-    ui.el("option", { value: "", text: "Cargando playlists…", disabled: true, selected: true }),
-  );
-  playlistSelect.addEventListener("focus", loadPlaylistOptions, { once: true });
-
-  async function loadPlaylistOptions() {
-    try {
-      const playlists = await api.getPlaylists();
-      playlistSelect.innerHTML = "";
-      playlistSelect.append(ui.el("option", { value: "", text: "Elige una playlist…", disabled: true, selected: true }));
-      for (const p of playlists) {
-        playlistSelect.append(ui.el("option", { value: p.id, text: p.name }));
-      }
-      if (lastPlaylistId) playlistSelect.value = lastPlaylistId;
-    } catch (err) {
-      showError("No se pudieron cargar tus playlists.", err);
-    }
-  }
-
-  const importPlaylistBtn = ui.el("button", {
-    class: "btn",
-    text: "Importar",
-    on: {
-      click: async () => {
-        if (!playlistSelect.value) return;
-        lastPlaylistId = playlistSelect.value;
-        await runImport(() => library.importFromPlaylist(lastPlaylistId), "Playlist importada");
-      },
-    },
-  });
-
-  const likedBtn = ui.el("button", {
-    class: "btn",
-    text: "Me gusta",
-    on: {
-      click: async () => {
-        await runImport(() => library.importLiked(), "«Me gusta» importado");
-      },
-    },
-  });
-
+  // --- search panel ----------------------------------------------------------
   const searchInput = ui.el("input", {
-    class: "input",
+    class: "search-field__input",
     type: "search",
-    placeholder: "Buscar canciones…",
-    "aria-label": "Buscar canciones",
-    value: lastQuery,
+    placeholder: "Busca canciones, álbumes o playlists…",
+    "aria-label": "Buscar canciones, álbumes o playlists",
+    autocomplete: "off",
+    value: query,
   });
-  const searchBtn = ui.el("button", {
-    class: "btn",
-    text: "Buscar",
-    on: {
-      click: async () => {
-        const q = searchInput.value.trim();
-        if (!q) return;
-        lastQuery = q;
-        await runImport(() => library.search(q), "Resultados añadidos");
-      },
-    },
-  });
-  searchInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") searchBtn.click();
-  });
+  const clearBtn = ui.el("button", {
+    class: "search-field__clear",
+    type: "button",
+    "aria-label": "Limpiar búsqueda",
+    hidden: !query,
+  }, ui.icon("x"));
+  const searchField = ui.el("div", { class: "search-field" },
+    ui.icon("search"),
+    searchInput,
+    clearBtn,
+  );
+  const chipsHost = ui.el("div", { class: "search-chips", hidden: true });
+  const resultsHost = ui.el("div", { class: "search-results" });
 
   function showError(msg, err) {
     errorHost.innerHTML = "";
@@ -611,30 +651,398 @@ function renderLibrary(view) {
     errorHost.append(banner);
   }
 
-  async function runImport(action, successMsg) {
+  async function runImport(action, label, { skeleton = true } = {}) {
     errorHost.innerHTML = "";
-    pendingHost.replaceChildren(ui.skeleton(3));
+    if (skeleton) pendingHost.replaceChildren(ui.skeleton(3));
     try {
-      const n = await action();
+      const res = await action();
       refresh();
       renderPending();
-      ui.toast(`${successMsg} (${n})`, "success");
+      renderPool();
+      ui.toast(importMessage(label, res), "success");
+      return res;
     } catch (err) {
       renderPending();
-      showError("Algo salió mal.", err);
+      showError("No se pudo importar. ", err);
+      return null;
     }
   }
 
+  // --- results rendering -----------------------------------------------------
+  function sectionHead(title, count) {
+    return ui.el("div", { class: "results__head" },
+      ui.el("h3", { class: "results__title", text: title }),
+      ui.el("span", { class: "results__count", text: String(count) }),
+    );
+  }
+
+  function mediaGrid(cards) {
+    return ui.el("div", { class: "media-grid" }, ...cards);
+  }
+
+  async function runMediaImport(kind, item, btn) {
+    btn.disabled = true;
+    btn.textContent = "Importando…";
+    const res = await runImport(() => library.importRef({ type: kind, id: item.id }), `«${item.name}»`);
+    if (res) {
+      imported.add(`${kind}:${item.id}`);
+      renderResults();
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Importar";
+    }
+  }
+
+  function mediaCard(kind, item, { owned = false } = {}) {
+    const done = imported.has(`${kind}:${item.id}`);
+    const meta = [];
+    if (owned) meta.push("Tuya");
+    if (kind === "album") {
+      const year = yearOf(item);
+      if (year) meta.push(year);
+      if (item.total_tracks) meta.push(`${item.total_tracks} temas`);
+    } else if (item.tracks?.total != null) {
+      meta.push(`${item.tracks.total} canciones`);
+    }
+    return ui.el("article", { class: "media-card" },
+      ui.el("div", { class: "media-card__cover" },
+        coverEl(coverUrl(item, kind), "media-card__cover-img", kind === "album" ? "album" : "list")
+      ),
+      ui.el("div", { class: "media-card__body" },
+        ui.el("span", { class: "media-card__title", text: item.name ?? "" }),
+        ui.el("span", { class: "media-card__sub", text: kind === "album" ? artistsText(item) : (item.owner?.display_name ?? "Spotify") }),
+        ui.el("span", { class: "media-card__meta", text: meta.join(" · ") }),
+      ),
+      ui.el("div", { class: "media-card__actions" },
+        ui.el("button", {
+          class: `btn btn--sm${done ? " btn--ghost" : " btn--primary"}`,
+          type: "button",
+          disabled: done,
+          text: done ? "Importado" : "Importar",
+          on: { click: (e) => runMediaImport(kind, item, e.currentTarget) },
+        })
+      ),
+    );
+  }
+
+  async function addTrack(t, btn) {
+    btn.disabled = true;
+    btn.textContent = "Añadiendo…";
+    const res = await runImport(async () => {
+      const added = library.addTracks([t]);
+      return { fetched: 1, added };
+    }, `«${t.name}»`, { skeleton: false });
+    if (res) renderResults();
+    else {
+      btn.disabled = false;
+      btn.textContent = "Añadir";
+    }
+  }
+
+  function trackList(tracks) {
+    const list = ui.el("ul", { class: "result-list" });
+    for (const t of tracks) {
+      const inPool = library.isInPool(t.id);
+      const pending = !inPool && library.isPending(t.id);
+      let action;
+      if (inPool) {
+        action = ui.el("span", { class: "chip chip--ok" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "Ya lo sé" }));
+      } else if (pending) {
+        action = ui.el("span", { class: "chip chip--muted" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "En pendientes" }));
+      } else {
+        action = ui.el("button", {
+          class: "btn btn--sm",
+          type: "button",
+          text: "Añadir",
+          on: { click: (e) => addTrack(t, e.currentTarget) },
+        }, ui.icon("plus"));
+      }
+      list.append(ui.el("li", { class: "result-row" },
+        coverEl(t.album?.images?.[0]?.url, "result-row__thumb", "note"),
+        ui.el("div", { class: "result-row__body" },
+          ui.el("span", { class: "result-row__title", text: t.name }),
+          ui.el("span", { class: "result-row__sub", text: `${artistsText(t)} · ${t.album?.name ?? ""}` }),
+        ),
+        action,
+      ));
+    }
+    return list;
+  }
+
+  function linkCard({ ref, item }) {
+    const kind = ref.type;
+    const supported = kind !== "artist";
+    const done = imported.has(`${kind}:${item.id}`);
+    let sub = "";
+    if (kind === "track") sub = `${artistsText(item)} · ${item.album?.name ?? ""}`;
+    else if (kind === "album") sub = [artistsText(item), yearOf(item), item.total_tracks ? `${item.total_tracks} temas` : ""].filter(Boolean).join(" · ");
+    else if (kind === "playlist") sub = `${item.owner?.display_name ?? "Spotify"} · ${item.tracks?.total ?? 0} canciones`;
+
+    const action = supported
+      ? ui.el("button", {
+          class: `btn${done ? " btn--ghost" : " btn--primary"}`,
+          type: "button",
+          disabled: done,
+          text: done ? "Importado" : "Importar",
+          on: { click: (e) => runMediaImport(kind, item, e.currentTarget) },
+        })
+      : ui.el("button", { class: "btn", type: "button", disabled: true, text: "No disponible" });
+
+    return ui.el("div", { class: "link-result" },
+      coverEl(coverUrl(item, kind), "link-result__cover", kind === "playlist" ? "list" : "album"),
+      ui.el("div", { class: "link-result__body" },
+        ui.el("span", { class: "chip chip--ok" },
+          ui.icon("link"),
+          ui.el("span", { text: `Enlace de ${KIND_LABEL[kind]} detectado` })
+        ),
+        ui.el("h3", { class: "link-result__title", text: item.name ?? "" }),
+        ui.el("p", { class: "muted-note", text: sub }),
+        supported
+          ? null
+          : ui.el("p", { class: "muted-note", text: "Spotify ya no permite traer las canciones de un artista: importa un álbum o una playlist." }),
+      ),
+      action,
+    );
+  }
+
+  function emptyState() {
+    if (results?.kind === "badlink") {
+      return ui.el("div", { class: "results__empty" },
+        ui.el("p", { text: "No pudimos leer ese enlace." }),
+        ui.el("p", { class: "muted-note", text: "Copia el enlace completo desde Spotify (Compartir → Copiar enlace) o busca por nombre." }),
+      );
+    }
+    return ui.el("div", { class: "results__empty" },
+      ui.el("p", { text: `Sin resultados para «${query.trim()}».` }),
+      ui.el("p", { class: "muted-note", text: "Prueba con otro nombre o pega un enlace de Spotify (canción, álbum o playlist)." }),
+    );
+  }
+
+  function renderBrowse() {
+    if (ownPlaylists) {
+      if (ownPlaylists.length === 0) {
+        resultsHost.replaceChildren(ui.el("p", { class: "muted-note", text: "Todavía no tienes playlists en Spotify." }));
+        return;
+      }
+      const shown = ownPlaylists.slice(0, 18);
+      const kids = [
+        sectionHead("Tus playlists", ownPlaylists.length),
+        mediaGrid(shown.map((p) => mediaCard("playlist", p, { owned: true }))),
+      ];
+      const hiddenCount = ownPlaylists.length - shown.length;
+      if (hiddenCount > 0) {
+        kids.push(ui.el("p", { class: "muted-note", text: `+${hiddenCount} más. Escribe para filtrarlas.` }));
+      }
+      resultsHost.replaceChildren(...kids);
+      return;
+    }
+    if (browseFailed) {
+      resultsHost.replaceChildren(ui.el("p", { class: "muted-note", text: "No se pudieron cargar tus playlists. Busca por nombre para reintentar." }));
+      return;
+    }
+    resultsHost.replaceChildren(ui.skeleton(4));
+  }
+
+  function renderCatalog(data) {
+    const showTracks = filter === "all" || filter === "tracks";
+    const showAlbums = filter === "all" || filter === "albums";
+    const showPlaylists = filter === "all" || filter === "playlists";
+    const tracks = showTracks ? data.tracks : [];
+    const albums = showAlbums ? data.albums : [];
+    const own = showPlaylists ? data.own : [];
+    const lists = showPlaylists ? data.playlists : [];
+    if (tracks.length + albums.length + own.length + lists.length === 0) {
+      resultsHost.replaceChildren(emptyState());
+      return;
+    }
+    const kids = [];
+    if (own.length > 0) {
+      kids.push(sectionHead("Tus playlists", own.length));
+      kids.push(mediaGrid(own.map((p) => mediaCard("playlist", p, { owned: true }))));
+    }
+    if (tracks.length > 0) {
+      kids.push(sectionHead("Canciones", tracks.length));
+      kids.push(trackList(tracks));
+    }
+    if (albums.length > 0) {
+      kids.push(sectionHead("Álbumes", albums.length));
+      kids.push(mediaGrid(albums.map((a) => mediaCard("album", a))));
+    }
+    if (lists.length > 0) {
+      kids.push(sectionHead("Playlists de Spotify", lists.length));
+      kids.push(mediaGrid(lists.map((p) => mediaCard("playlist", p))));
+    }
+    resultsHost.replaceChildren(...kids);
+  }
+
+  function renderChips() {
+    const data = results?.kind === "catalog" ? results : null;
+    const total = data ? data.tracks.length + data.albums.length + data.playlists.length + data.own.length : 0;
+    if (!data || total === 0) {
+      chipsHost.hidden = true;
+      chipsHost.replaceChildren();
+      return;
+    }
+    const chipCounts = {
+      all: total,
+      tracks: data.tracks.length,
+      albums: data.albums.length,
+      playlists: data.playlists.length + data.own.length,
+    };
+    const defs = [["all", "Todo"], ["tracks", "Canciones"], ["albums", "Álbumes"], ["playlists", "Playlists"]];
+    chipsHost.hidden = false;
+    chipsHost.replaceChildren(
+      ...defs.map(([value, label]) =>
+        ui.el("button", {
+          class: `search-chip${filter === value ? " search-chip--active" : ""}`,
+          type: "button",
+          "aria-pressed": filter === value ? "true" : "false",
+          disabled: chipCounts[value] === 0,
+          text: `${label} · ${chipCounts[value]}`,
+          on: {
+            click: () => {
+              filter = value;
+              renderChips();
+              renderResults();
+            },
+          },
+        })
+      )
+    );
+  }
+
+  function renderResults() {
+    resultsHost.setAttribute("aria-busy", loading ? "true" : "false");
+    if (loading) {
+      resultsHost.replaceChildren(ui.skeleton(4));
+      return;
+    }
+    if (query.trim().length < 2) {
+      renderBrowse();
+      return;
+    }
+    if (results?.kind === "link") {
+      resultsHost.replaceChildren(linkCard(results));
+      return;
+    }
+    if (results?.kind === "catalog") {
+      renderCatalog(results);
+      return;
+    }
+    if (results?.kind === "badlink") {
+      resultsHost.replaceChildren(emptyState());
+      return;
+    }
+    resultsHost.replaceChildren();
+  }
+
+  async function doSearch(raw) {
+    const term = String(raw ?? "").trim();
+    searchAbort?.abort();
+    searchAbort = null;
+
+    if (term.length < 2) {
+      seq++;
+      loading = false;
+      results = null;
+      renderChips();
+      renderResults();
+      return;
+    }
+
+    const mine = ++seq;
+    const link = parseSpotifyRef(term);
+    const badLink = !link && looksLikeSpotifyLink(term);
+
+    loading = true;
+    results = null;
+    errorHost.innerHTML = "";
+    renderChips();
+    renderResults();
+
+    try {
+      if (link) {
+        const resolved = await library.resolveRef(link);
+        if (mine !== seq) return;
+        results = resolved?.item ? { kind: "link", ref: link, item: resolved.item } : { kind: "badlink" };
+      } else if (badLink) {
+        results = { kind: "badlink" };
+      } else {
+        const controller = new AbortController();
+        searchAbort = controller;
+        const [catalog, mineList] = await Promise.all([
+          api.searchCatalog(term, controller.signal),
+          loadOwnPlaylists().catch(() => []),
+        ]);
+        if (mine !== seq) return;
+        const needle = match.normalize(term);
+        const own = (mineList ?? []).filter((p) => {
+          const hay = `${match.normalize(p.name)} ${match.normalize(p.owner?.display_name ?? "")}`;
+          return hay.includes(needle);
+        });
+        results = { kind: "catalog", ...catalog, own };
+      }
+    } catch (err) {
+      if (err?.name === "AbortError" || mine !== seq) return;
+      results = null;
+      showError(link ? "No se pudo abrir el enlace. " : "No se pudo buscar. ", err);
+    } finally {
+      if (mine === seq) {
+        loading = false;
+        renderChips();
+        renderResults();
+      }
+    }
+  }
+
+  function clearSearch() {
+    runSearch.cancel();
+    searchAbort?.abort();
+    searchAbort = null;
+    seq++;
+    searchInput.value = "";
+    query = "";
+    lastQuery = "";
+    clearBtn.hidden = true;
+    loading = false;
+    results = null;
+    errorHost.innerHTML = "";
+    renderChips();
+    renderResults();
+    searchInput.focus();
+  }
+
+  // --- wiring ----------------------------------------------------------------
+  const runSearch = debounce((term) => doSearch(term), 280);
+
+  searchInput.addEventListener("input", () => {
+    query = searchInput.value;
+    lastQuery = query;
+    clearBtn.hidden = !query;
+    runSearch(query);
+  });
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      clearSearch();
+    }
+  });
+  clearBtn.addEventListener("click", clearSearch);
+
   view.append(
     ui.el("div", { class: "card stack" },
-      ui.el("div", { class: "lib-toolbar" },
-        playlistSelect,
-        importPlaylistBtn,
-        likedBtn,
-        searchInput,
-        searchBtn,
-      ),
+      searchField,
+      ui.el("p", { class: "search-hint", text: "Busca por nombre o pega un enlace de Spotify (canción, álbum o playlist)." }),
       errorHost,
+      chipsHost,
+      resultsHost,
+    ),
+    ui.el("div", { class: "card lib-toolbar lib-toolbar--between" },
+      ui.el("button", {
+        class: "btn",
+        type: "button",
+        on: { click: () => runImport(() => library.importLiked(), "«Me gusta»") },
+      }, ui.icon("plus"), "Importar «Me gusta»"),
       counts,
     ),
     ui.el("div", { class: "section stack--lg" },
@@ -646,14 +1054,23 @@ function renderLibrary(view) {
   refresh();
   renderPending();
   renderPool();
+  renderChips();
+  renderResults();
+
+  loadOwnPlaylists()
+    .then(() => {
+      if (query.trim().length < 2 && !loading) renderResults();
+    })
+    .catch(() => {
+      browseFailed = true;
+      if (query.trim().length < 2 && !loading) renderResults();
+    });
+
+  if (query.trim().length >= 2) doSearch(query);
 }
 
 function thumb(t) {
-  const url = t.album.images?.[0]?.url;
-  if (!url) return ui.el("div", { class: "pending-row__thumb" }, ui.icon("note"));
-  const img = ui.el("img", { class: "pending-row__thumb", alt: "", loading: "lazy", src: url });
-  img.addEventListener("error", () => img.replaceWith(ui.el("div", { class: "pending-row__thumb" }, ui.icon("note"))));
-  return img;
+  return coverEl(t.album?.images?.[0]?.url, "pending-row__thumb", "note");
 }
 
 // --- game views ---------------------------------------------------------------------

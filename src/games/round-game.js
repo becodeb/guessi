@@ -10,6 +10,7 @@
 import * as ui from "../ui.js";
 import * as match from "../match.js";
 import { createAutoGuess } from "../guess-auto.js";
+import { CLIP_STEPS_MS, clipIncrement, growClip } from "../clip-steps.js";
 import { isStaleCover } from "../storage.js";
 import { createLyricsGame, tokenize, maskWord } from "../lyrics-engine.js";
 import { getLyrics, saveManualLyrics } from "../lyrics.js";
@@ -93,6 +94,7 @@ function drawRound(view, live) {
   handle.cardChips = {};
   handle.cardReveal = {};
   handle.cardState = {};
+  handle.cardEls = {};
 
   const track = handle.ctx.library.getRandomTrack();
   handle.round = { track };
@@ -106,28 +108,43 @@ function drawRound(view, live) {
 function renderHeader() {
   const progress = ui.el("span", { class: "chip chip--muted", id: "round-progress" });
   handle.progressChip = progress;
+  const segments = ui.el("div", { class: "round__segments", "aria-hidden": "true" });
+  handle.progressSegments = segments;
   const ver = ui.el("button", {
-    class: "btn btn--ghost",
+    class: "btn btn--ghost round__header-action",
     text: "Ver respuestas",
     on: { click: () => revealAll() },
   });
   return ui.el("div", { class: "round__header" },
     ui.el("span", { class: "round__title", text: "Ronda" }),
-    progress,
+    ui.el("div", { class: "round__progress" }, segments, progress),
     ver,
   );
 }
 
+// Playable cards only (the Premium-gated ones leave the denominator when the
+// player is not Premium). Segments mirror the same states as the chips:
+// solved = accent, hinted/revealed = dimmed accent, pending = empty.
+function playableCardIds() {
+  return handle.ctx.player.isPremium() ? ["song", "album", "year", "lyrics"] : ["album", "lyrics"];
+}
+
+function isCardDone(state) {
+  return state === "solved" || state === "hinted" || state === "revealed";
+}
+
 function updateProgress() {
   if (!handle.progressChip) return;
-  const premium = handle.ctx.player.isPremium();
-  // Only playable cards count toward the denominator.
-  const ids = premium ? ["song", "album", "year", "lyrics"] : ["album", "lyrics"];
-  const done = ids.filter((id) => {
-    const s = handle.cardState[id];
-    return s === "solved" || s === "hinted" || s === "revealed";
-  }).length;
+  const ids = playableCardIds();
+  const done = ids.filter((id) => isCardDone(handle.cardState[id])).length;
   handle.progressChip.textContent = `${done}/${ids.length} resueltos`;
+  if (handle.progressSegments) {
+    handle.progressSegments.replaceChildren(...ids.map((id) => {
+        const state = handle.cardState[id];
+        const mod = state === "solved" ? "round__seg--done" : isCardDone(state) ? "round__seg--partial" : "";
+        return ui.el("span", { class: `round__seg${mod ? ` ${mod}` : ""}` });
+      }));
+  }
 }
 
 function setCardState(id, state) {
@@ -146,6 +163,8 @@ function setCardState(id, state) {
       chip.className = `chip ${entry[1]}`;
     }
   }
+  const cardEl = handle.cardEls[id];
+  if (cardEl) cardEl.classList.toggle("card--solved", state === "solved");
   updateProgress();
 }
 
@@ -339,25 +358,51 @@ function renderAudioBar(track) {
       text: "El audio necesita Spotify Premium.",
     });
   }
-  const st = { playing: false, primed: false, taps: 1, targetMs: 100, priming: null };
+  const duration = Number(track.duration_ms);
+  const st = {
+    playing: false,
+    primed: false,
+    stepIndex: 0,
+    targetMs: CLIP_STEPS_MS[0],
+    priming: null,
+    maxMs: Number.isFinite(duration) && duration > 0 ? duration : Infinity,
+  };
   st.priming = handle.ctx.player.prime(track.uri);
   st.priming.then((ok) => { st.primed = ok; });
   return clipBlock(track, st);
 }
 
 // Reused verbatim: prime, in-flight prime guard, ctx.player.playClip, progress.
+// +0,1s doubles the jump on every tap (CLIP_STEPS_MS) and the label always
+// announces the next tap's jump, so the clip can be stretched coarsely once the
+// first seconds are not enough. Reproducir toggles into Detener while it plays.
 function clipBlock(track, st) {
   const { ctx } = handle;
   const fill = ui.el("div", { class: "clip__fill" });
   const bar = ui.el("div", { class: "clip__bar", "aria-hidden": "true" }, fill);
   const label = ui.el("span", { class: "clip__label display--num", text: ui.formatMs(st.targetMs) });
 
+  const stopPlayback = () => {
+    if (st.playing) ctx.player.stop();
+  };
+
+  const syncClip = () => {
+    label.textContent = ui.formatMs(st.targetMs);
+    // The button always announces the NEXT tap's jump (the doubling ladder).
+    addBtn.textContent = `+${ui.formatMs(clipIncrement(st.stepIndex))}`;
+    addBtn.disabled = st.targetMs >= st.maxMs;
+    resetBtn.disabled = st.stepIndex === 0 && st.targetMs === CLIP_STEPS_MS[0];
+  };
+
   const playBtn = ui.el("button", {
     class: "btn btn--primary",
     text: "Reproducir",
     on: {
       click: async () => {
-        if (st.playing) return;
+        if (st.playing) {
+          stopPlayback();
+          return;
+        }
         if (!st.primed && st.priming) await st.priming;
         if (!st.primed) {
           st.priming = ctx.player.prime(track.uri);
@@ -368,11 +413,13 @@ function clipBlock(track, st) {
           return;
         }
         st.playing = true;
+        playBtn.textContent = "Detener";
         fill.style.transition = `width ${st.targetMs}ms linear`;
         fill.style.width = "100%";
         ctx.player.playClip(st.targetMs, {
           onEnd: () => {
             st.playing = false;
+            playBtn.textContent = "Reproducir";
             fill.style.transition = "width 120ms ease-out";
             fill.style.width = "0%";
           },
@@ -383,19 +430,49 @@ function clipBlock(track, st) {
 
   const addBtn = ui.el("button", {
     class: "btn btn--ghost",
-    text: "+0,1 s",
+    text: `+${ui.formatMs(CLIP_STEPS_MS[0])}`,
+    "aria-label": "Sumar tiempo al clip",
     on: {
       click: () => {
-        st.taps += 1;
-        st.targetMs = 100 * st.taps;
-        label.textContent = ui.formatMs(st.targetMs);
+        stopPlayback();
+        const next = growClip(st.targetMs, st.stepIndex, st.maxMs);
+        st.targetMs = next.targetMs;
+        st.stepIndex = next.stepIndex;
+        syncClip();
+        announce(`Clip de ${ui.formatMs(st.targetMs)}`);
       },
     },
   });
 
-  return ui.el("div", { class: "stack" },
-    ui.el("div", { class: "clip" }, bar, label),
-    ui.el("div", { class: "clip__actions" }, playBtn, addBtn),
+  const resetBtn = ui.el("button", {
+    class: "btn btn--ghost",
+    text: "Reiniciar",
+    "aria-label": "Volver el clip a 0,1 s",
+    on: {
+      click: () => {
+        stopPlayback();
+        st.stepIndex = 0;
+        st.targetMs = CLIP_STEPS_MS[0];
+        syncClip();
+        announce("Clip de 0,1 s");
+      },
+    },
+  });
+  const hint = ui.el("p", {
+    class: "clip-card__hint",
+    text: "Cada toque suma el doble (0,1 → 0,2 → 0,4…). Reiniciar vuelve a 0,1 s.",
+  });
+
+  syncClip();
+
+  return ui.el("div", { class: "card clip-card" },
+    ui.el("div", { class: "clip-card__head" },
+      ui.el("span", { class: "clip-card__caption", text: "Clip" }),
+      label,
+    ),
+    ui.el("div", { class: "clip" }, bar),
+    ui.el("div", { class: "clip__actions" }, playBtn, addBtn, resetBtn),
+    hint,
   );
 }
 
@@ -410,10 +487,11 @@ function makeCard(id) {
   );
   const body = ui.el("div", { class: "stack" });
   const cardEl = ui.el("div", { class: "card stack" }, head, body);
+  handle.cardEls[id] = cardEl;
   return { cardEl, body };
 }
 
-// --- card: La canción (title only, Premium) ---------------------------------
+// --- card: La canción (title + credited artists, Premium) -------------------
 
 function renderSongCard(track, premium) {
   const id = "song";
@@ -430,6 +508,22 @@ function renderSongCard(track, premium) {
   const auto = createAutoGuess();
   handle.autos.push(auto);
 
+  const artists = track.artists ?? [];
+  const artistNames = artists.map((a) => (typeof a === "string" ? a : (a.name ?? "")));
+  const st = { titleSolved: false, artistsSolved: artists.length === 0 };
+
+  const bannerText = ui.el("span", { text: "¡Correcto! Canción resuelta." });
+  const solvedBanner = ui.el("div", { class: "solved-banner", hidden: true },
+    ui.icon("check"), bannerText);
+
+  const checkSolved = () => {
+    if (st.titleSolved && st.artistsSolved) {
+      solvedBanner.hidden = false;
+      announce("Canción y artistas correctos");
+      setCardState(id, "solved");
+    }
+  };
+
   const input = ui.el("input", {
     class: "guess__input", type: "text", placeholder: "Escribe el título",
     "aria-label": "Adivina el título", autocomplete: "off",
@@ -440,12 +534,13 @@ function renderSongCard(track, premium) {
     const v = input.value;
     if (!v.trim()) { group.classList.remove("guess--correct", "guess--incorrect"); return; }
     if (match.matchTitle(v, track.name)) {
+      st.titleSolved = true;
       input.disabled = true;
       input.value = track.name;
       group.classList.remove("guess--incorrect");
       group.classList.add("guess--correct");
       announce(`Título correcto: ${track.name}`);
-      setCardState(id, "solved");
+      checkSolved();
     } else {
       group.classList.remove("guess--correct");
       group.classList.add("guess--incorrect");
@@ -457,17 +552,100 @@ function renderSongCard(track, premium) {
     match.normalize(input.value) === match.normalize(match.stripAliases(track.name));
   auto.bind(group, input, instant, evaluate);
 
+  // Artist slots: one per credited artist, order-free, each correct guess
+  // relocates to the artist's own slot (same contract as the album card).
+  const slotInputs = [];
+  const slotGroups = [];
+  const evaluateArtists = () => {
+    const focused = document.activeElement;
+    const focusPrev = focused && slotInputs.includes(focused) ? focused.value : null;
+
+    const values = slotInputs.map((i) => i.value);
+    const result = match.assignArtistSlots(values, artists);
+    const lockedBefore = slotInputs.filter((i) => i.disabled).length;
+
+    slotInputs.forEach((slotInput, j) => {
+      const slotGroup = slotGroups[j];
+      const val = result.values[j];
+      slotGroup.classList.remove("guess--correct", "guess--incorrect");
+      if (result.locked[j]) {
+        slotInput.disabled = true;
+        if (slotInput.value !== val) slotInput.value = val;
+        slotGroup.classList.add("guess--correct");
+      } else if (val !== "") {
+        slotGroup.classList.add("guess--incorrect");
+      } else if (slotInput.value !== "") {
+        slotInput.value = "";
+      }
+    });
+
+    st.artistsSolved = result.solved;
+    if (result.solved) {
+      announce("Artistas de la canción correctos");
+      checkSolved();
+    } else {
+      const lockedAfter = slotInputs.filter((i) => i.disabled).length;
+      const hasWrong = result.values.some((v, j) => v !== "" && !result.locked[j]);
+      if (lockedAfter > lockedBefore) announce("Artista correcto");
+      else if (hasWrong) announce("Artista incorrecto, probá de nuevo");
+    }
+
+    // Focus preservation: keep the keyboard flow on the first empty open slot.
+    if (focused && slotInputs.includes(focused)) {
+      const movedAway =
+        focused.disabled || (focusPrev !== null && focusPrev !== "" && focused.value === "");
+      if (movedAway) {
+        const next = slotInputs.find((i) => !i.disabled && i.value === "");
+        if (next && next !== focused) next.focus();
+      }
+    }
+  };
+  artists.forEach((artist) => {
+    const slotInput = ui.el("input", {
+      class: "guess__input", type: "text", placeholder: "Escribe un artista",
+      "aria-label": "Adivina el artista de la canción", autocomplete: "off",
+    });
+    slotInputs.push(slotInput);
+    const slotGroup = ui.el("div", { class: "guess" }, slotInput);
+    const slotInstant = () =>
+      artistNames.some(
+        (n) =>
+          match.normalize(slotInput.value) === match.normalize(n) ||
+          match.normalize(slotInput.value) === match.normalize(match.stripAliases(n)),
+      );
+    auto.bind(slotGroup, slotInput, slotInstant, evaluateArtists);
+    slotGroups.push(slotGroup);
+  });
+
   handle.cardReveal[id] = () => {
+    st.titleSolved = true;
+    st.artistsSolved = true;
     input.disabled = true;
     input.value = track.name;
     group.classList.add("guess--correct");
+    artists.forEach((artist, j) => {
+      const n = typeof artist === "string" ? artist : artist.name;
+      slotInputs[j].disabled = true;
+      slotInputs[j].value = n;
+      slotGroups[j].classList.add("guess--correct");
+    });
+    solvedBanner.hidden = false;
+    bannerText.textContent = "Canción revelada.";
     setCardState(id, "revealed");
   };
 
-  body.append(
+  const children = [
     ui.el("p", { class: "guess-panel__title", text: "Adivina el título" }),
     group,
-  );
+  ];
+  if (artists.length > 0) {
+    children.push(
+      ui.el("p", { class: "guess-panel__title", text: "Adivina los artistas" }),
+      ...slotGroups,
+    );
+  }
+  children.push(solvedBanner);
+  body.append(...children);
   return cardEl;
 }
 
@@ -509,8 +687,9 @@ function renderAlbumCard(track, premium) {
     "aria-label": "Adivina el álbum", autocomplete: "off", disabled: st.albumCorrect,
   });
   const albumGroup = ui.el("div", { class: "guess" }, albumInput);
+  const albumBannerText = ui.el("span", { text: "¡Correcto! Álbum resuelto." });
   const solvedBanner = ui.el("div", { class: "solved-banner", hidden: true },
-    ui.icon("check"), ui.el("span", { text: "¡Correcto! Álbum resuelto." }));
+    ui.icon("check"), albumBannerText);
   const tracklistBox = ui.el("div", { class: "stack" });
   const tracklistChip = ui.el("span", { class: "chip chip--muted", hidden: true });
   cardEl.querySelector(".card__head").append(tracklistChip);
@@ -898,6 +1077,7 @@ function renderAlbumCard(track, premium) {
       }
     });
     solvedBanner.hidden = false;
+    albumBannerText.textContent = "Álbum revelado.";
     revealCoverFull();
     revealAlbumTracklistAll();
     setCardState(id, "revealed");
@@ -951,12 +1131,12 @@ function renderYearCard(track, premium) {
   handle.autos.push(auto);
   const st = { year, solved: false };
 
+  const bannerText = ui.el("span", { text: `¡Correcto! El año es ${year}.` });
   const solvedBanner = ui.el("div", { class: "solved-banner", hidden: true },
-    ui.icon("check"), ui.el("span", { text: `¡Correcto! ${year}.` }));
+    ui.icon("check"), bannerText);
   const hintArrow = ui.el("span", { class: "hint-arrow" });
   const hintClose = ui.el("span", { class: "muted-note" });
   const hintRow = ui.el("div", { class: "hint-row", hidden: true }, hintArrow, hintClose);
-  const answerRow = ui.el("p", { class: "muted-note", hidden: true });
 
   const input = ui.el("input", {
     class: "guess__input", type: "number", inputmode: "numeric", min: "1950", max: "2035",
@@ -976,8 +1156,7 @@ function renderYearCard(track, premium) {
       st.solved = true;
       input.disabled = true;
       solvedBanner.hidden = false;
-      answerRow.hidden = false;
-      answerRow.textContent = `${artistString(track)} · ${track.album.name} · ${year}`;
+      // No artist/album here: the year card must never spoil the other cards.
       announce(`¡Correcto! El año es ${year}`);
       setCardState(id, "solved");
     } else {
@@ -997,10 +1176,9 @@ function renderYearCard(track, premium) {
     st.solved = true;
     input.disabled = true;
     input.value = String(year);
-    solvedBanner.hidden = false;
     hintRow.hidden = true;
-    answerRow.hidden = false;
-    answerRow.textContent = `${artistString(track)} · ${track.album.name} · ${year}`;
+    bannerText.textContent = `El año es ${year}.`;
+    solvedBanner.hidden = false;
     setCardState(id, "revealed");
   };
 
@@ -1009,13 +1187,8 @@ function renderYearCard(track, premium) {
     group,
     hintRow,
     solvedBanner,
-    answerRow,
   );
   return cardEl;
-}
-
-function artistString(track) {
-  return (track.artists ?? []).map((a) => (typeof a === "string" ? a : a.name)).join(", ");
 }
 
 // --- card: La letra (ported verbatim behavior) ------------------------------

@@ -1,6 +1,7 @@
-// Library: import (playlists / liked / search), pending list, "songs I know"
-// pool, dedupe, albums set, random draws, album-tracklist cache (library spec).
-// No rendering; views read state via getters.
+// Library: import (playlists / liked / search / albums / pasted links),
+// pending list, "songs I know" pool, dedupe, albums set, random draws,
+// album-tracklist cache (library spec). No rendering; views read state via
+// getters.
 
 import * as storage from "./storage.js";
 import * as api from "./spotify-api.js";
@@ -81,28 +82,64 @@ function pushPending(tracks) {
 
 // --- import sources -----------------------------------------------------------
 
-export async function importFromPlaylist(id) {
-  const tracks = await api.getPlaylistItems(id);
+/**
+ * Upsert raw API tracks and queue them for selection.
+ * @param {object[]} tracks
+ * @returns {number} how many are NEW in the pending list (0 when every track
+ *   was already pending or in the pool).
+ */
+export function addTracks(tracks) {
+  const before = state.pending.length;
   for (const t of tracks) upsertTrack(t);
   pushPending(tracks);
   persist();
-  return tracks.length;
+  return state.pending.length - before;
+}
+
+export async function importFromPlaylist(id) {
+  const tracks = await api.getPlaylistItems(id);
+  return { fetched: tracks.length, added: addTracks(tracks) };
 }
 
 export async function importLiked() {
   const tracks = await api.getLikedTracks();
-  for (const t of tracks) upsertTrack(t);
-  pushPending(tracks);
-  persist();
-  return tracks.length;
+  return { fetched: tracks.length, added: addTracks(tracks) };
 }
 
-export async function search(query) {
-  const tracks = await api.searchTracks(query);
-  for (const t of tracks) upsertTrack(t);
-  pushPending(tracks);
-  persist();
-  return tracks.length;
+/** Whole album: metadata + full tracklist (also cached for Game 2). */
+export async function importAlbum(id) {
+  const [album, tracks] = await Promise.all([api.getAlbum(id), api.getAlbumTracks(id)]);
+  const full = tracks.map((t) => ({ ...t, album }));
+  const added = addTracks(full);
+  const lib = ensureLib();
+  if (lib.albums[id]) {
+    lib.albums[id].tracks = tracks;
+    lib.albums[id].fetchedAt = new Date().toISOString();
+    persist();
+  }
+  return { fetched: full.length, added };
+}
+
+export async function importTrack(id) {
+  const track = await api.getTrack(id);
+  return { fetched: 1, added: addTracks([track]) };
+}
+
+/** Resolve a parsed Spotify link to its display metadata (no side effects). */
+export async function resolveRef({ type, id }) {
+  if (type === "track") return { kind: "track", item: await api.getTrack(id) };
+  if (type === "album") return { kind: "album", item: await api.getAlbum(id) };
+  if (type === "playlist") return { kind: "playlist", item: await api.getPlaylist(id) };
+  if (type === "artist") return { kind: "artist", item: await api.getArtist(id) };
+  return null;
+}
+
+/** Import whatever a parsed Spotify link points at (artists are read-only). */
+export async function importRef({ type, id }) {
+  if (type === "album") return importAlbum(id);
+  if (type === "playlist") return importFromPlaylist(id);
+  if (type === "track") return importTrack(id);
+  return { fetched: 0, added: 0 };
 }
 
 // --- pool ("songs I know") -----------------------------------------------------
@@ -161,6 +198,10 @@ export function getTrackCount() {
 
 export function isInPool(id) {
   return ensureLib().pool.includes(id);
+}
+
+export function isPending(id) {
+  return state.pending.some((t) => t.id === id);
 }
 
 /** Albums referenced by pool tracks (the Game 2 draw set). */
