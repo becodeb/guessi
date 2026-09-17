@@ -712,17 +712,46 @@ function renderAlbumCard(track, premium) {
     }
   };
 
+  const lockAlbum = (name) => {
+    st.albumCorrect = true;
+    albumInput.disabled = true;
+    albumInput.value = name;
+    albumGroup.classList.remove("guess--incorrect");
+    albumGroup.classList.add("guess--correct");
+    checkSolved();
+  };
+
+  // A solved name fills every other input that expects the same name: a
+  // self-titled track (song title = album title) resolves on either side, and
+  // repeated titles fill all of their rows. Rows match by expected name, never
+  // by position.
+  function propagateTitle(name) {
+    const filled = [];
+    if (ac.tracklistLoaded) {
+      for (let i = 0; i < ac.tracks.length; i++) {
+        if (ac.rowState[i].songLocked) continue;
+        if (!match.matchTitle(name, ac.tracks[i].name)) continue;
+        lockRowSong(i, ac.tracks[i].name);
+        filled.push(i + 1);
+      }
+      if (filled.length > 0) {
+        updateTracklistChip();
+        announce(`Se completaron por nombre repetido: tema${filled.length > 1 ? "s" : ""} ${filled.join(", ")}`);
+      }
+    }
+    if (!st.albumCorrect && match.matchAlbum(name, album.name)) {
+      lockAlbum(album.name);
+      announce(`Álbum correcto: ${album.name}`);
+    }
+  }
+
   const evaluateAlbum = () => {
     const v = albumInput.value;
     if (!v.trim()) { albumGroup.classList.remove("guess--correct", "guess--incorrect"); return; }
     if (match.matchAlbum(v, album.name)) {
-      st.albumCorrect = true;
-      albumInput.disabled = true;
-      albumInput.value = album.name;
-      albumGroup.classList.remove("guess--incorrect");
-      albumGroup.classList.add("guess--correct");
+      lockAlbum(album.name);
       announce(`Álbum correcto: ${album.name}`);
-      checkSolved();
+      propagateTitle(album.name);
     } else {
       albumGroup.classList.remove("guess--correct");
       albumGroup.classList.add("guess--incorrect");
@@ -806,6 +835,7 @@ function renderAlbumCard(track, premium) {
     freeInput.value = "";
     announce(`Tema ${hit + 1} correcto: ${ac.tracks[hit].name}`);
     updateTracklistChip();
+    propagateTitle(ac.tracks[hit].name);
   };
   auto.bind(freeGroup, freeInput, () => true, evaluateFree);
 
@@ -842,6 +872,9 @@ function renderAlbumCard(track, premium) {
     ac.rowState = tracks.map(newRowState);
     renderAlbumTracklistGrid();
     updateTracklistChip();
+    // The album name may have been solved while the tracklist was loading:
+    // fill its self-titled row(s) now that they exist.
+    if (st.albumCorrect) propagateTitle(album.name);
   }
 
   // One ladder per row edge (start / end), same doubling as the round clip.
@@ -1034,14 +1067,10 @@ function renderAlbumCard(track, premium) {
       return;
     }
     if (match.matchTitle(v, ac.tracks[i].name)) {
-      rs.songLocked = true;
-      rs.songText = ac.tracks[i].name;
-      els.songInput.disabled = true;
-      els.songInput.value = ac.tracks[i].name;
-      els.songGroup.classList.remove("guess--incorrect");
-      els.songGroup.classList.add("guess--correct");
+      lockRowSong(i, ac.tracks[i].name);
       announce(`Tema ${i + 1} correcto: ${ac.tracks[i].name}`);
       updateTracklistChip();
+      propagateTitle(ac.tracks[i].name);
     } else {
       els.songGroup.classList.remove("guess--correct");
       els.songGroup.classList.add("guess--incorrect");

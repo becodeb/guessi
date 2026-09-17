@@ -208,6 +208,11 @@ abierta (DevTools) y los pasos exactos.
         canción); adivinar la canción la bloquea (verde) y conserva el nombre real.
   - [ ] El orden importa: la fila N se evalúa contra la canción N; una canción
         puesta en la fila equivocada no cuenta.
+  - [ ] Nombres repetidos se completan solos: si el álbum se llama igual que un
+        tema, resolver el álbum (o el tema) completa el otro lado —incluso si la
+        tracklist todavía estaba cargando—; dos filas con el mismo título se
+        completan juntas (también al usar el input «sin orden»). La propagación
+        es por nombre esperado, nunca por posición.
   - [ ] Cada fila muestra los artistas acreditados como inputs; un artista ya
         resuelto (en los slots del álbum o en otra fila) aparece como chip
         automático en todas las filas del álbum que lo acrediten: el dueño, que
