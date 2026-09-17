@@ -56,9 +56,26 @@ abierta (DevTools) y los pasos exactos.
       `deoido.v1.library` con `tracks` y `pool` sin repetidos).
 - [ ] «Quitar» un tema de «Lo que sé» → desaparece del pool y de los juegos.
 - [ ] Persistencia: recargar la página → biblioteca y pool siguen cargados.
-- [ ] Versionado: cambiar `version` a `2` en `deoido.v1.library` y recargar →
+- [ ] Persistencia con pool grande: importar «Me gusta» (miles de temas) →
+      «Añadir todo» → recargar → el pool sigue completo (contador «Lo que sé N»)
+      y los juegos sortean. En DevTools → Application → Local Storage,
+      `deoido.v1.library` guarda cada álbum una sola vez (`tracks[id].albumId`,
+      sin copia de portadas por tema) y solo los temas del pool.
+- [ ] «Vaciar»: junto a «Lo que sé», el primer clic arma «¿Vaciar todo?» (rojo)
+      y el segundo vacía el pool, actualiza el contador, muestra el toast
+      ««Lo que sé» quedó vacío.» y `deoido.v1.library` queda en unos pocos bytes.
+      Recargar → sigue vacío y los juegos muestran la guía de importación.
+      Sin el segundo clic, el botón se desarma solo a los 4 s.
+- [ ] Almacenamiento lleno: con `localStorage.setItem` forzado a fallar (o un
+      pool gigante), agregar un tema → banner persistente «No se pudo guardar tu
+      biblioteca: el almacenamiento del navegador está lleno…»; vaciar el pool →
+      el banner desaparece al primer guardado ok.
+- [ ] Versionado: cambiar `version` a `99` en `deoido.v1.library` y recargar →
       la biblioteca se descarta, los tokens se conservan, y los juegos muestran
       la guía de importación.
+- [ ] Migración v1: con una `deoido.v1.library` `version: 1` (con `tracks[].album`
+      anidado) → recargar → pool y portadas siguen, y al primer guardado el
+      esquema queda en `version: 2` (álbumes normalizados en `albums`).
 
 ## 3. Rate limit (429 / QUOTA_EXCEEDED)
 

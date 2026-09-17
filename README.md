@@ -129,6 +129,7 @@ tests/match.test.mjs  Harness sin framework: node tests/match.test.mjs
 tests/lyrics.test.mjs Harness sin framework de la letra: node tests/lyrics.test.mjs
 tests/spotify-link.test.mjs  Harness sin framework del parser de enlaces
 tests/clip-steps.test.mjs    Harness sin framework de la escalera del clip
+tests/storage.test.mjs       Harness sin framework del esquema de biblioteca
 docs/smoke-checklist.md  Chequeo manual de humo
 ```
 
@@ -138,10 +139,22 @@ docs/smoke-checklist.md  Chequeo manual de humo
 npm test
 ```
 
-Corre los cuatro harness sin framework: `tests/match.test.mjs` (matching),
+Corre los cinco harness sin framework: `tests/match.test.mjs` (matching),
 `tests/lyrics.test.mjs` (motor de la letra), `tests/spotify-link.test.mjs`
-(parser de enlaces de Spotify) y `tests/clip-steps.test.mjs` (escalera del
-clip). Exit 0 = ok.
+(parser de enlaces de Spotify), `tests/clip-steps.test.mjs` (escalera del
+clip) y `tests/storage.test.mjs` (esquema de la biblioteca: ida y vuelta,
+compactación, cuota y migración v1→v2). Exit 0 = ok.
+
+## Biblioteca guardada
+
+«Lo que sé» vive en `deoido.v1.library` (esquema `version: 2`): cada álbum se
+guarda una sola vez (`albums`) y los temas lo referencian por `albumId`, así
+una biblioteca grande de miles de temas entra en el localStorage del
+navegador. Solo se persiste el pool — los pendientes son de la sesión. Si el
+navegador se queda sin espacio, la app reintenta sin las listas de temas
+(re-fetchables) y, si aun así no entra, avisa con un banner persistente.
+El botón «Vaciar», junto a «Lo que sé» en la Biblioteca, vacía el pool entero
+(primer clic arma, segundo confirma).
 
 ## Letras (LRCLIB)
 

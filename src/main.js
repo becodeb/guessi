@@ -19,7 +19,7 @@ import * as roundGame from "./games/round-game.js";
 const appState = {
   view: "login",
   auth: { status: "anon", scopes: [] },
-  library: { pendingCount: 0, poolCount: 0, loading: false, slowDown: false },
+  library: { pendingCount: 0, poolCount: 0, loading: false, slowDown: false, saveError: false },
   player: {
     status: "off",
     volume: 80,
@@ -188,6 +188,20 @@ function updateBanners() {
     ));
   }
 
+  if (appState.library.saveError) {
+    banners.push(ui.el("div", { class: "banner banner--error" },
+      ui.icon("warn"),
+      ui.el("div", { class: "banner__body" },
+        ui.el("span", { text: "No se pudo guardar tu biblioteca: el almacenamiento del navegador está lleno. Vacía «Lo que sé» y vuelve a importar." }),
+        ui.el("button", {
+          class: "btn btn--sm",
+          text: "Ir a la biblioteca",
+          on: { click: () => navigate("#/library") },
+        }),
+      ),
+    ));
+  }
+
   for (const b of banners) bannerHost.append(b);
 }
 
@@ -224,6 +238,12 @@ async function boot() {
       appState.library.slowDown = false;
       updateBanners();
     }, Math.max(waitMs, 5000));
+  });
+
+  library.onSaveResult(({ ok }) => {
+    if (appState.library.saveError === !ok) return;
+    appState.library.saveError = !ok;
+    updateBanners();
   });
 
   player.onPremiumError(() => {
@@ -606,8 +626,40 @@ function renderLibrary(view) {
       );
       list.append(row);
     }
+
+    // Two-step «Vaciar»: the first click arms it, the second empties the pool.
+    let armed = false;
+    let disarmTimer = null;
+    const clearPoolBtn = ui.el("button", {
+      class: "btn btn--sm btn--ghost",
+      type: "button",
+      text: "Vaciar",
+    });
+    clearPoolBtn.addEventListener("click", () => {
+      if (!armed) {
+        armed = true;
+        clearPoolBtn.textContent = "¿Vaciar todo?";
+        clearPoolBtn.className = "btn btn--sm btn--danger";
+        disarmTimer = setTimeout(() => {
+          armed = false;
+          clearPoolBtn.textContent = "Vaciar";
+          clearPoolBtn.className = "btn btn--sm btn--ghost";
+        }, 4000);
+        return;
+      }
+      clearTimeout(disarmTimer);
+      library.clearPool();
+      refresh();
+      renderPending();
+      renderPool();
+      ui.toast("«Lo que sé» quedó vacío.", "success");
+    });
+
     poolHost.append(
-      ui.el("p", { class: "guess-panel__title", text: "Lo que sé" }),
+      ui.el("div", { class: "row row--between" },
+        ui.el("p", { class: "guess-panel__title", text: "Lo que sé" }),
+        clearPoolBtn,
+      ),
       list,
     );
   };

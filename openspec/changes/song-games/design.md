@@ -144,24 +144,23 @@ Import is eager (D7): playlists → `/me/playlists` → per playlist `/playlists
 // deoido.v1.auth_state — transient, cleared after exchange
 { state, code_verifier }
 
-// deoido.v1.library
+// deoido.v1.library — v2 (compact): albums once, referenced by albumId
 {
-  version: 1,
+  version: 2,
   fetchedAt: "<ISO>",
-  tracks: { [trackId]: { id, uri, name,
-      artists: [{id, name}],
-      album:  { id, name, type, release_date, images: [{url,width,height}] },
-      duration_ms } },
+  tracks: { [trackId]: { id, name, artists: [{id, name}], albumId, duration_ms } },
   albums: { [albumId]: { id, name, type, artists: [{id,name}], release_date,
       total_tracks, images, fetchedAt,          // fetchedAt = cover perishability
-      tracks: [{id, name, artists, duration_ms, track_number}] } }  // Game 2 cache
+      tracks: [{id, name, artists, duration_ms, track_number}] } },  // Game 2 cache
+  pool: [trackId, …]                            // only pooled tracks are persisted
 }
 ```
 
-- **Migration policy**: `version !== 1` → discard library (keep tokens), show empty-library guide → re-import. No partial migration at v1.
+- **Quota safety (v2)**: v1 nested a full album copy (covers included) inside every track and kept every imported track forever, so a big pool ("Me gusta") exceeded the ~5 MB localStorage quota, `setItem` threw and the write was silently swallowed → the library vanished on reload. v2 stores each album once (`albumId` reference; `uri` derives from the id), persists only the pool (the pending list is per-session), and `saveLibrary()` returns `{ ok, droppedTracklists }`: on quota it retries once without the re-fetchable Game 2 tracklist caches and, if it still fails, the view shows a persistent «no se pudo guardar» banner (`library.onSaveResult`).
+- **Migration policy**: v1 loads through the same codec (nested album copies are promoted to `albums`) and is rewritten as v2 on the next save. Unknown versions (`version ∉ {1, 2}`) → discard library (keep tokens), show empty-library guide → re-import.
 - **Perishable covers**: `fetchedAt` per album; `isStaleCover()` = now − fetchedAt > `COVER_TTL_MS` (12h); `<img onerror>` → `getAlbum(id)` refresh + update + re-render.
 - **Feature detection (Game 2 tracklist)**: featured artists = `track.artists` − `album.artists`, compared by `artist.id`.
-- **Operations**: import → upsert into `tracks` (dedupe by `track.id`), upsert album into `albums`; `pool` = tracked selected ids (subset of `tracks`); remove → drop from pool (album set recomputed from pool tracks); counts = `Object.keys(tracks).length` / pool size.
+- **Operations**: import → upsert into `tracks` (dedupe by `track.id`), upsert album into `albums`; `pool` = tracked selected ids (subset of `tracks`); remove → drop from pool (album set recomputed from pool tracks); «Vaciar» (`clearPool()`) empties the pool and the snapshot shrinks to it; counts = `Object.keys(tracks).length` / pool size.
 
 ## Matching (`match.js`)
 

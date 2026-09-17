@@ -20,7 +20,7 @@ function ensureLib() {
 
 function emptyLib() {
   return {
-    version: 1,
+    version: 2,
     fetchedAt: new Date().toISOString(),
     tracks: {},
     albums: {},
@@ -28,8 +28,22 @@ function emptyLib() {
   };
 }
 
+const saveListeners = new Set();
+
+/**
+ * Subscribe to persistence results: `{ ok, droppedTracklists }`. Views use it
+ * to warn when the browser storage is full and the pool could not be saved.
+ * @param {(result: {ok: boolean, droppedTracklists: boolean}) => void} cb
+ */
+export function onSaveResult(cb) {
+  saveListeners.add(cb);
+  return () => saveListeners.delete(cb);
+}
+
 function persist() {
-  storage.saveLibrary(state.lib);
+  const result = storage.saveLibrary(state.lib);
+  for (const cb of saveListeners) cb(result);
+  return result;
 }
 
 /** Upsert a track (dedupe by id) and its album into the maps. */
@@ -170,6 +184,15 @@ export function removeFromPool(id) {
   for (const albumId of Object.keys(lib.albums)) {
     if (!referenced.has(albumId)) delete lib.albums[albumId];
   }
+  persist();
+}
+
+/** Empty «Lo que sé»: the stored snapshot keeps only pool-referenced data. */
+export function clearPool() {
+  const lib = ensureLib();
+  lib.pool = [];
+  state.lastTrackId = null;
+  state.lastAlbumId = null;
   persist();
 }
 

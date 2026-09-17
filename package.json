@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Song-guessing games played against your own Spotify library. Vanilla ES modules, zero dependencies.",
   "scripts": {
-    "test": "node tests/match.test.mjs && node tests/lyrics.test.mjs && node tests/spotify-link.test.mjs && node tests/clip-steps.test.mjs",
+    "test": "node tests/match.test.mjs && node tests/lyrics.test.mjs && node tests/spotify-link.test.mjs && node tests/clip-steps.test.mjs && node tests/storage.test.mjs",
     "serve": "python3 -m http.server 8080"
   }
 }

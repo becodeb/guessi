@@ -13,7 +13,13 @@ const KEYS = {
   manualLyrics: `${PREFIX}manualLyrics`,
 };
 
-const LIBRARY_VERSION = 1;
+// v1 nested a full album copy (covers included) inside every track and kept
+// every imported track forever, which tripled the payload: a big "Me gusta"
+// blew the localStorage quota, the write failed silently and the library
+// vanished on reload. v2 stores each album once in `albums` (tracks only carry
+// `albumId`) and persists just the pool — the pending list is per-session.
+const LIBRARY_VERSION = 2;
+const READABLE_VERSIONS = [1, LIBRARY_VERSION];
 
 function read(key, fallback) {
   try {
@@ -27,8 +33,10 @@ function read(key, fallback) {
 function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    // Quota exceeded or private mode: app keeps working in memory-only mode.
+    // Quota exceeded or private mode: the caller decides how to degrade.
+    return false;
   }
 }
 
@@ -40,37 +48,110 @@ function remove(key) {
   }
 }
 
-// --- library ----------------------------------------------------------------
+// --- library (compact v2 codec) ----------------------------------------------
 
-/**
- * Load the persisted library. Returns null when absent or on schema
- * version mismatch (mismatch discards the library, keeps tokens, and the
- * empty-library import guide takes over — design "Migration policy").
- */
-export function loadLibrary() {
-  const data = read(KEYS.library, null);
-  if (!data) return null;
-  if (data.version !== LIBRARY_VERSION) {
-    remove(KEYS.library);
-    return null;
-  }
+/** Album metadata as stored: covers + `fetchedAt`, plus the Game 2 tracklist cache. */
+function albumRecord(source, albumId) {
   return {
-    version: LIBRARY_VERSION,
-    fetchedAt: data.fetchedAt ?? new Date().toISOString(),
-    tracks: data.tracks ?? {},
-    albums: data.albums ?? {},
-    pool: Array.isArray(data.pool) ? data.pool : [],
+    id: albumId,
+    name: source?.name ?? "",
+    type: source?.type ?? source?.album_type ?? null,
+    artists: (source?.artists ?? []).map((a) => ({ id: a.id, name: a.name })),
+    release_date: source?.release_date ?? null,
+    total_tracks: source?.total_tracks ?? null,
+    images: source?.images ?? [],
+    fetchedAt: source?.fetchedAt ?? new Date().toISOString(),
+    tracks: Array.isArray(source?.tracks) ? source.tracks : null,
   };
 }
 
-export function saveLibrary(library) {
-  write(KEYS.library, {
+/** In-memory library → stored snapshot (albums normalized, pool only). */
+function compactLibrary(library) {
+  const tracks = {};
+  const albums = {};
+  const pool = [];
+  for (const id of library.pool ?? []) {
+    const track = library.tracks?.[id];
+    if (!track?.id) continue;
+    pool.push(id);
+    tracks[id] = {
+      id: track.id,
+      name: track.name,
+      artists: track.artists ?? [],
+      albumId: track.album?.id ?? null,
+      duration_ms: track.duration_ms,
+    };
+    // The uri is derivable from the id; only store it when it differs.
+    if (track.uri && track.uri !== `spotify:track:${track.id}`) tracks[id].uri = track.uri;
+    const albumId = tracks[id].albumId;
+    if (!albumId || albums[albumId]) continue;
+    albums[albumId] = albumRecord(library.albums?.[albumId] ?? track.album, albumId);
+  }
+  return { version: LIBRARY_VERSION, fetchedAt: new Date().toISOString(), tracks, albums, pool };
+}
+
+/** Stored snapshot (v1 or v2) → in-memory library (tracks own their album). */
+function expandLibrary(data) {
+  const albums = {};
+  for (const [id, album] of Object.entries(data.albums ?? {})) albums[id] = albumRecord(album, id);
+  const tracks = {};
+  for (const [id, track] of Object.entries(data.tracks ?? {})) {
+    const trackId = track.id ?? id;
+    const albumId = track.albumId ?? track.album?.id ?? null;
+    // v1 kept the album copy inside the track: promote it to the albums map.
+    if (albumId && !albums[albumId] && track.album) albums[albumId] = albumRecord(track.album, albumId);
+    tracks[id] = {
+      id: trackId,
+      uri: track.uri ?? `spotify:track:${trackId}`,
+      name: track.name,
+      artists: track.artists ?? [],
+      album: albums[albumId] ?? { id: albumId },
+      duration_ms: track.duration_ms,
+    };
+  }
+  const pool = (Array.isArray(data.pool) ? data.pool : []).filter((id) => tracks[id]);
+  return {
     version: LIBRARY_VERSION,
-    fetchedAt: new Date().toISOString(),
-    tracks: library.tracks ?? {},
-    albums: library.albums ?? {},
-    pool: library.pool ?? [],
-  });
+    fetchedAt: data.fetchedAt ?? new Date().toISOString(),
+    tracks,
+    albums,
+    pool,
+  };
+}
+
+/**
+ * Load the persisted library. Returns null when absent or on an unknown schema
+ * version (unknown discards the library, keeps tokens, and the empty-library
+ * import guide takes over — design "Migration policy"). v1 migrates in place:
+ * expanded through the same codec, then re-compacted on the next save.
+ */
+export function loadLibrary() {
+  const data = read(KEYS.library, null);
+  if (!data || typeof data !== "object") return null;
+  if (!READABLE_VERSIONS.includes(data.version)) {
+    remove(KEYS.library);
+    return null;
+  }
+  return expandLibrary(data);
+}
+
+/**
+ * Persist the library and report what happened. On a quota error the album
+ * tracklist caches (re-fetchable by Game 2) are dropped and the write is
+ * retried once, so the pool is never silently lost.
+ * @returns {{ ok: boolean, droppedTracklists: boolean }}
+ */
+export function saveLibrary(library) {
+  const snapshot = compactLibrary(library);
+  if (write(KEYS.library, snapshot)) return { ok: true, droppedTracklists: false };
+  const withoutTracklists = {};
+  for (const [id, album] of Object.entries(snapshot.albums)) {
+    withoutTracklists[id] = { ...album, tracks: null };
+  }
+  if (write(KEYS.library, { ...snapshot, albums: withoutTracklists })) {
+    return { ok: true, droppedTracklists: true };
+  }
+  return { ok: false, droppedTracklists: true };
 }
 
 export function clearLibrary() {
