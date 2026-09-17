@@ -208,9 +208,10 @@ abierta (DevTools) y los pasos exactos.
         canción); adivinar la canción la bloquea (verde) y conserva el nombre real.
   - [ ] El orden importa: la fila N se evalúa contra la canción N; una canción
         puesta en la fila equivocada no cuenta.
-  - [ ] Cada fila muestra los artistas acreditados como inputs; los artistas del
-        álbum aparecen como chip automático (sin input) **solo si ya resolviste
-        los slots del artista del álbum**; si no, siguen como inputs para adivinar.
+  - [ ] Cada fila muestra los artistas acreditados como inputs; un artista ya
+        resuelto (en los slots del álbum o en otra fila) aparece como chip
+        automático en todas las filas del álbum que lo acrediten: el dueño, que
+        está en todos los temas, se escribe una sola vez.
   - [ ] Input «sin orden» arriba de la grilla: escribir cualquier tema del álbum
         (sin importar el orden) lo llena y bloquea en su fila correcta y limpia el
         input; si no coincide con ninguna fila sin resolver no hace nada (sin error).

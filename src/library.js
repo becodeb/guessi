@@ -60,6 +60,10 @@ function upsertTrack(track) {
       id: track.album?.id,
       name: track.album?.name,
       type: track.album?.album_type ?? track.album?.type,
+      // Album artists must survive the in-session import too: the round's
+      // album card draws its album-level artist slots from them (after a
+      // reload the full record comes from the albums map).
+      artists: (track.album?.artists ?? []).map((a) => ({ id: a.id, name: a.name })),
       release_date: track.album?.release_date,
       images: track.album?.images ?? [],
     },

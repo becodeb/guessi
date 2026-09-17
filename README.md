@@ -18,7 +18,8 @@ Un modo principal y tres de práctica suelta:
   desafíos de **canción** y **año**. Cuatro tarjetas independientes:
   **La canción** (título y artistas por separado), **El álbum y los artistas**
   (adivinás el álbum y sus artistas, y además cada canción del álbum con su
-  artista en una grilla siempre visible; al resolver revela la portada),
+  artista en una grilla siempre visible; un artista que resolviste se completa
+  solo en todas las filas del álbum; al resolver revela la portada),
   **¿De qué año?** (pistas de más nuevo/viejo, sin spoilers de artista o álbum)
   y **La letra** (palabra por palabra). Cada tarjeta tiene su chip de estado y
   las resueltas se marcan con un borde verde. El álbum y la letra funcionan

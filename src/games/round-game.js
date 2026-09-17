@@ -660,7 +660,10 @@ function renderAlbumCard(track, premium) {
   const id = "album";
   const { cardEl, body } = makeCard(id);
   cardEl.classList.add("album-card");
-  const album = track.album;
+  // The canonical album record lives in the library's albums map; the track's
+  // embedded copy only carries full metadata after the first reload. Either way
+  // the card needs the album artists: they are the album-level slots.
+  const album = handle.ctx.library.getLibrary().albums?.[track.album?.id] ?? track.album;
   const myRound = handle.round;
   const st = {
     albumCorrect: false,
@@ -669,11 +672,16 @@ function renderAlbumCard(track, premium) {
   const auto = createAutoGuess();
   handle.autos.push(auto);
 
-  const albumArtistSet = new Set((album?.artists ?? []).map((a) => a.id ?? a.name));
-  const isAlbumArtist = (a) => albumArtistSet.has(a.id ?? a.name);
+  // Artists solved anywhere in this card (album-level slots or a track row) are
+  // known for the whole album: the owner is credited on every track, so typing
+  // it once must fill every row instead of asking again per song.
+  const knownArtists = new Set();
+  const artistKey = (a) => (typeof a === "string" ? a : (a?.id ?? a?.name ?? null));
+  const artistName = (a) => (typeof a === "string" ? a : (a?.name ?? ""));
+  const isKnownArtist = (a) => knownArtists.has(artistKey(a));
 
   // Tracklist game state — the grid is always visible; rows are state-driven so
-  // the album-artist-solve re-render stays lossless (no typed text is dropped).
+  // chip syncs and the reveal re-render stay lossless (no typed text is dropped).
   const ac = {
     tracks: null,
     tracklistLoaded: false,
@@ -745,9 +753,11 @@ function renderAlbumCard(track, premium) {
       }
     });
     st.artistSolved = result.solved;
+    // Per-artist propagation: each solved album artist is known for every
+    // track, even before the whole album slot set is solved.
+    if (markKnownArtists(album.artists ?? [], result.locked)) syncKnownArtists();
     if (result.solved) {
       announce("Artistas del álbum correctos");
-      renderAlbumTracklistGrid();
       checkSolved();
     }
   };
@@ -849,6 +859,61 @@ function renderAlbumCard(track, premium) {
     tracklistBox.append(grid);
   }
 
+  function artistChip(name) {
+    return ui.el("span", { class: "chip chip--ok" },
+      ui.el("span", { class: "dot" }),
+      ui.el("span", { text: name }));
+  }
+
+  // Add the credited artists whose slots are locked to the known set. Returns
+  // true when at least one artist was new (the grid then needs a sync).
+  function markKnownArtists(credited, locked) {
+    let gained = false;
+    credited.forEach((artist, j) => {
+      const key = artistKey(artist);
+      if (!locked?.[j] || key == null || knownArtists.has(key)) return;
+      knownArtists.add(key);
+      gained = true;
+    });
+    return gained;
+  }
+
+  // Fill every row where a known artist is still an input with a chip, in place:
+  // no grid re-render, so the field being typed in keeps focus. A row left with
+  // no inputs counts its artist part as solved.
+  function syncKnownArtists() {
+    if (!ac.tracklistLoaded) return;
+    const focused = document.activeElement;
+    let stoleFocus = false;
+    for (let i = 0; i < ac.tracks.length; i++) {
+      const rs = ac.rowState[i];
+      const els = ac.rowEls[i];
+      if (!els) continue;
+      const credited = ac.tracks[i].artists ?? [];
+      for (let m = els.remIdx.length - 1; m >= 0; m--) {
+        const k = els.remIdx[m];
+        const artist = credited[k];
+        if (!isKnownArtist(artist)) continue;
+        const group = els.artistGroups[m];
+        if (focused && group.contains(focused)) stoleFocus = true;
+        group.replaceWith(artistChip(artistName(artist)));
+        els.remIdx.splice(m, 1);
+        els.artistInputs.splice(m, 1);
+        els.artistGroups.splice(m, 1);
+        rs.artistLocked[k] = true;
+        rs.artistVals[k] = artistName(artist);
+      }
+      if (els.remIdx.length === 0) rs.artistSolved = true;
+    }
+    if (stoleFocus) {
+      const next = ac.rowEls
+        .flatMap((els) => els?.artistInputs ?? [])
+        .find((input) => !input.disabled && input.value === "");
+      if (next) next.focus();
+    }
+    updateTracklistChip();
+  }
+
   function buildTrackRow(i) {
     const track = ac.tracks[i];
     const rs = ac.rowState[i];
@@ -880,12 +945,10 @@ function renderAlbumCard(track, premium) {
     const remIdx = [];
     for (let k = 0; k < credited.length; k++) {
       const a = credited[k];
-      // Album artists are known for free ONLY once the album-artist slots are
-      // solved; otherwise they stay as guessable inputs like any other credit.
-      if (isAlbumArtist(a) && st.artistSolved) {
-        artistWrap.append(ui.el("span", { class: "chip chip--ok" },
-          ui.el("span", { class: "dot" }),
-          ui.el("span", { text: a.name })));
+      // A known artist (solved at the album level or in another row) shows as a
+      // chip; anything else stays a guessable input.
+      if (isKnownArtist(a)) {
+        artistWrap.append(artistChip(a.name));
       } else {
         const input = ui.el("input", {
           class: "guess__input", type: "text", placeholder: "Artista",
@@ -997,6 +1060,10 @@ function renderAlbumCard(track, premium) {
         if (next && next !== focused) next.focus();
       }
     }
+
+    // A solved artist is known for the whole album: fill it in every other row
+    // that credits it instead of asking again.
+    if (markKnownArtists(remArtists, result.locked)) syncKnownArtists();
   }
 
   function lockRowSong(i, name) {
