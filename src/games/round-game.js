@@ -404,7 +404,9 @@ function clipBlock(track, st) {
           return;
         }
         if (!st.primed && st.priming) await st.priming;
-        if (!st.primed) {
+        // A tracklist preview (album card) may have loaded another song onto
+        // the device: re-prime the round's track before playing.
+        if (!ctx.player.isPrimed(track.uri)) {
           st.priming = ctx.player.prime(track.uri);
           st.primed = await st.priming;
         }
@@ -837,16 +839,26 @@ function renderAlbumCard(track, premium) {
     if (handle.round !== myRound) return; // stale response guard
     ac.tracks = tracks;
     ac.tracklistLoaded = true;
-    ac.rowState = tracks.map((t) => ({
+    ac.rowState = tracks.map(newRowState);
+    renderAlbumTracklistGrid();
+    updateTracklistChip();
+  }
+
+  // One ladder per row edge (start / end), same doubling as the round clip.
+  function newPreviewLadder() {
+    return { stepIndex: 0, targetMs: CLIP_STEPS_MS[0] };
+  }
+
+  function newRowState(t) {
+    return {
       songText: "",
       songLocked: false,
       artistVals: (t.artists ?? []).map(() => ""),
       artistLocked: (t.artists ?? []).map(() => false),
       // No credited artists to solve → the row's artist part is already done.
       artistSolved: (t.artists ?? []).length === 0,
-    }));
-    renderAlbumTracklistGrid();
-    updateTracklistChip();
+      preview: { head: newPreviewLadder(), tail: newPreviewLadder() },
+    };
   }
 
   function renderAlbumTracklistGrid() {
@@ -857,6 +869,7 @@ function renderAlbumCard(track, premium) {
     ac.rowEls = [];
     for (let i = 0; i < ac.tracks.length; i++) grid.append(buildTrackRow(i));
     tracklistBox.append(grid);
+    syncPreviewButtons(); // button labels/disabled come from the stored ladders
   }
 
   function artistChip(name) {
@@ -975,8 +988,40 @@ function renderAlbumCard(track, premium) {
     // so the row's artist part is complete even though no input triggered it.
     if (remIdx.length === 0) rs.artistSolved = true;
 
-    ac.rowEls[i] = { songInput, songGroup, artistInputs, artistGroups, remIdx };
-    return ui.el("div", { class: "album-track" }, num, main);
+    // Audio previews: no track name in the labels — the row is still a guess.
+    const n = track.track_number ?? i + 1;
+    const previewBtn = (part) =>
+      ui.el("button", {
+        class: "btn btn--sm btn--ghost", type: "button",
+        text: part === "tail" ? "Final" : "Inicio",
+        title: `Reproducir el ${part === "tail" ? "final" : "inicio"} del tema`,
+        "aria-label": `Reproducir el ${part === "tail" ? "final" : "inicio"} de la canción ${n}`,
+        on: { click: () => togglePreview(i, part) },
+      });
+    const previewAddBtn = (part) =>
+      ui.el("button", {
+        class: "btn btn--sm btn--ghost", type: "button", text: `+${ui.formatMs(CLIP_STEPS_MS[0])}`,
+        title: `Sumar tiempo al ${part === "tail" ? "final" : "inicio"}`,
+        "aria-label": `Sumar tiempo al ${part === "tail" ? "final" : "inicio"} de la canción ${n}`,
+        on: { click: () => growPreview(i, part) },
+      });
+
+    const headPlay = premium ? previewBtn("head") : null;
+    const headAdd = premium ? previewAddBtn("head") : null;
+    const tailPlay = premium ? previewBtn("tail") : null;
+    const tailAdd = premium ? previewAddBtn("tail") : null;
+    const audioCol = premium
+      ? ui.el("div", { class: "album-track__audio" },
+          ui.el("div", { class: "album-track__audio-line" }, headPlay, headAdd),
+          ui.el("div", { class: "album-track__audio-line" }, tailPlay, tailAdd),
+        )
+      : null;
+
+    ac.rowEls[i] = {
+      songInput, songGroup, artistInputs, artistGroups, remIdx,
+      headPlay, headAdd, tailPlay, tailAdd,
+    };
+    return ui.el("div", { class: "album-track" }, num, main, audioCol);
   }
 
   function evaluateRowSong(i) {
@@ -1094,6 +1139,88 @@ function renderAlbumCard(track, premium) {
     }
   }
 
+  // --- per-row audio previews (Premium) --------------------------------------
+  // Hear the start / end of any album track without leaving the round. Each row
+  // keeps its own clip ladder per edge (same doubling as the round's clip bar:
+  // 0,1 → 0,2 → 0,4…), so a tap adds the next step; «Final» plays the last N
+  // seconds of the song. Playback goes through the shared Spotify device, so a
+  // preview stops the round's clip (and vice versa) and the clip bar re-primes.
+  const preview = { row: -1, part: null, playing: false };
+
+  function previewCap(track) {
+    const duration = Number(track.duration_ms);
+    return Number.isFinite(duration) && duration > 0 ? duration : Infinity;
+  }
+
+  function syncPreviewButtons() {
+    for (let i = 0; i < ac.rowEls.length; i++) {
+      const els = ac.rowEls[i];
+      if (!els?.headPlay) continue;
+      const state = ac.rowState[i].preview;
+      const cap = previewCap(ac.tracks[i]);
+      const canTail = Number.isFinite(cap);
+      const on = preview.playing && preview.row === i;
+      els.headPlay.textContent = on && preview.part === "head" ? "Detener" : "Inicio";
+      els.tailPlay.textContent = on && preview.part === "tail" ? "Detener" : "Final";
+      els.headAdd.textContent = `+${ui.formatMs(clipIncrement(state.head.stepIndex))}`;
+      els.tailAdd.textContent = `+${ui.formatMs(clipIncrement(state.tail.stepIndex))}`;
+      els.tailPlay.disabled = !canTail;
+      els.tailAdd.disabled = !canTail || state.tail.targetMs >= cap;
+      els.headAdd.disabled = state.head.targetMs >= cap;
+    }
+  }
+
+  function growPreview(i, part) {
+    const state = ac.rowState[i].preview[part];
+    handle.ctx.player.stop(); // same as the clip bar: a tap stops the clip first
+    const next = growClip(state.targetMs, state.stepIndex, previewCap(ac.tracks[i]));
+    state.targetMs = next.targetMs;
+    state.stepIndex = next.stepIndex;
+    syncPreviewButtons();
+    announce(
+      `Clip de ${ui.formatMs(state.targetMs)} del ${part === "tail" ? "final" : "inicio"} del tema ${i + 1}`
+    );
+  }
+
+  async function togglePreview(i, part) {
+    const rowTrack = ac.tracks[i];
+    const wasOn = preview.playing && preview.row === i && preview.part === part;
+    handle.ctx.player.stop(); // stops the round clip or a previous preview
+    if (wasOn) return;
+    const cap = previewCap(rowTrack);
+    if (part === "tail" && !Number.isFinite(cap)) return;
+    const state = ac.rowState[i].preview[part];
+    const targetMs = Math.min(state.targetMs, cap);
+    const fromMs = part === "tail" ? Math.max(0, cap - targetMs) : 0;
+    const uri = rowTrack.uri ?? `spotify:track:${rowTrack.id}`;
+    const player = handle.ctx.player;
+    if (!player.isPrimed(uri)) {
+      // Prime inside the window being previewed, so the pre-roll stays there.
+      const ok = await player.prime(uri, { positionMs: fromMs });
+      if (!ok) {
+        ui.toast("El reproductor todavía no está listo. Probá de nuevo.", "error");
+        return;
+      }
+      if (!handle || handle.round !== myRound) return; // navigated away mid-prime
+    }
+    preview.row = i;
+    preview.part = part;
+    preview.playing = true;
+    syncPreviewButtons();
+    announce(
+      `Reproduciendo ${ui.formatMs(targetMs)} del ${part === "tail" ? "final" : "inicio"} del tema ${i + 1}`
+    );
+    player.playClip(targetMs, {
+      fromMs,
+      onEnd: () => {
+        preview.playing = false;
+        preview.row = -1;
+        preview.part = null;
+        syncPreviewButtons();
+      },
+    });
+  }
+
   async function revealAlbumTracklistAll() {
     if (!ac.tracklistLoaded) {
       try {
@@ -1101,13 +1228,7 @@ function renderAlbumCard(track, premium) {
         if (handle.round === myRound) {
           ac.tracks = tracks;
           ac.tracklistLoaded = true;
-          ac.rowState = tracks.map((t) => ({
-            songText: "",
-            songLocked: false,
-            artistVals: (t.artists ?? []).map(() => ""),
-            artistLocked: (t.artists ?? []).map(() => false),
-            artistSolved: (t.artists ?? []).length === 0,
-          }));
+          ac.rowState = tracks.map(newRowState);
         }
       } catch {
         // Leave the grid untouched on network failure.

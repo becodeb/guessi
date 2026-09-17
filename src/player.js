@@ -16,6 +16,7 @@ const state = {
   failsafeId: null,
   clipActive: false,
   onEnd: null,
+  primedUri: null, // track currently loaded (paused) on the device
 };
 
 const premiumListeners = new Set();
@@ -189,18 +190,28 @@ async function ensurePaused() {
 }
 
 /**
- * Preload a track onto the device: PUT play with position 0, then make sure it
- * ends paused, so Play only needs seek(0)+resume(). Called on select and Next.
- * Returns false when no device is available or the play call fails.
+ * True when `uri` is the track currently loaded (paused) on the device, i.e.
+ * Play only needs seek+resume. Another view may have primed a different track.
  */
-export async function prime(uri) {
+export function isPrimed(uri) {
+  return Boolean(state.player && state.deviceId && state.primedUri === uri);
+}
+
+/**
+ * Preload a track onto the device: PUT play from `positionMs`, then make sure
+ * it ends paused, so Play only needs seek+resume. Called on select and Next;
+ * the album tracklist passes an offset to prime inside a track's tail. Returns
+ * false when no device is available or the play call fails.
+ */
+export async function prime(uri, { positionMs = 0 } = {}) {
   if (!state.player || !state.deviceId) return false;
   try {
     await apiFetch(`/me/player/play?device_id=${encodeURIComponent(state.deviceId)}`, {
       method: "PUT",
-      body: { uris: [uri], position_ms: 0 },
+      body: { uris: [uri], position_ms: Math.max(0, Math.round(positionMs)) },
     });
     await ensurePaused();
+    state.primedUri = uri;
     return true;
   } catch (err) {
     if (err?.status === 403 && err?.message === "PREMIUM_REQUIRED") {
@@ -214,18 +225,19 @@ export async function prime(uri) {
 }
 
 /**
- * Play the accumulated clip. seek(0)+resume() fire synchronously inside the
- * user gesture; a 50ms poll pauses at position ≥ targetMs. The audible window
- * may exceed targetMs by SDK latency (100–500ms) — tolerated by design, no
- * compensation beyond one poll interval.
+ * Play a clip: seek(fromMs)+resume() fire synchronously inside the user
+ * gesture; a 50ms poll pauses at position ≥ fromMs + targetMs. `fromMs` starts
+ * the window elsewhere in the track (the album tracklist previews the tail).
+ * The audible window may exceed targetMs by SDK latency (100–500ms) —
+ * tolerated by design, no compensation beyond one poll interval.
  */
-export function playClip(targetMs, { onEnd } = {}) {
+export function playClip(targetMs, { fromMs = 0, onEnd } = {}) {
   if (!state.player || !state.deviceId) return false;
   stop();
   state.clipActive = true;
   state.onEnd = onEnd ?? null;
   bestEffortActivate();
-  state.player.seek(0);
+  state.player.seek(fromMs);
   state.player.resume();
   // Wall-clock failsafe: even when the position poll can never read state,
   // the clip cannot run away (the 50ms poll stays the primary stop).
@@ -238,7 +250,7 @@ export function playClip(targetMs, { onEnd } = {}) {
     } catch {
       position = null;
     }
-    if (position != null && position >= targetMs) {
+    if (position != null && position >= fromMs + targetMs) {
       stop();
     }
   }, 50);

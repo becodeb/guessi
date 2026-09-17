@@ -1863,7 +1863,7 @@ button {
 
 .album-track {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 28px 1fr auto;
   gap: 12px;
   align-items: start;
   padding: 10px 4px;
@@ -1898,6 +1898,41 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Per-track start/end previews (Premium): play + «+seconds» per edge, one edge
+   per line, with its own doubling ladder (same rule as the round's clip bar). */
+.album-track__audio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.album-track__audio-line {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.album-track__audio .btn {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* Narrow screens: the controls flow under the row inputs instead of squeezing
+   them into a third column. */
+@media (max-width: 559px) {
+  .album-track {
+    grid-template-columns: 28px 1fr;
+  }
+
+  .album-track__audio {
+    grid-column: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 /* --------------------------------------------------------------------------

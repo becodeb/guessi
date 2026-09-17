@@ -19,7 +19,10 @@ Un modo principal y tres de práctica suelta:
   **La canción** (título y artistas por separado), **El álbum y los artistas**
   (adivinás el álbum y sus artistas, y además cada canción del álbum con su
   artista en una grilla siempre visible; un artista que resolviste se completa
-  solo en todas las filas del álbum; al resolver revela la portada),
+  solo en todas las filas del álbum y cada fila tiene (con Premium) botones
+  «Inicio»/«Final» con su propio «+0,1 s» acumulable (0,1 → 0,2 → 0,4…, como la
+  barra de clip) para oír el principio o el final del tema; al resolver revela
+  la portada),
   **¿De qué año?** (pistas de más nuevo/viejo, sin spoilers de artista o álbum)
   y **La letra** (palabra por palabra). Cada tarjeta tiene su chip de estado y
   las resueltas se marcan con un borde verde. El álbum y la letra funcionan

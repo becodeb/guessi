@@ -212,6 +212,15 @@ abierta (DevTools) y los pasos exactos.
         resuelto (en los slots del álbum o en otra fila) aparece como chip
         automático en todas las filas del álbum que lo acrediten: el dueño, que
         está en todos los temas, se escribe una sola vez.
+  - [ ] Cada fila (con Premium) tiene, por extremo, un botón «Inicio»/«Final» y
+        su «+0,1 s»: la escalera es la misma de la barra de clip (0,1 → 0,2 →
+        0,4…, con techo en la duración del tema) y es independiente por fila y
+        por extremo. «Final» reproduce los últimos N segundos y queda
+        deshabilitado si el tema no tiene duración conocida. Los botones pasan a
+        «Detener» mientras suenan (un segundo clic corta; empezar otro corta el
+        anterior). Sin Premium no se muestran. Los labels solo usan el número de
+        tema (sin spoilers) y, tras usar una preview, «Reproducir» de la barra
+        de audio vuelve a preparar la canción de la ronda (no suena la del tema).
   - [ ] Input «sin orden» arriba de la grilla: escribir cualquier tema del álbum
         (sin importar el orden) lo llena y bloquea en su fila correcta y limpia el
         input; si no coincide con ninguna fila sin resolver no hace nada (sin error).
