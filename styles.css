@@ -1,0 +1,1597 @@
+/* ==========================================================================
+   de oído — dark-first single theme (design D9). Tokens, components, views.
+   Fonts: Bricolage Grotesque (display) + Karla (text).
+   Radius scale (locked): cards 16 · inputs 10 · buttons/chips pill · covers 12.
+   Motion: only transform/opacity/filter animate; reduced-motion collapses all.
+   ========================================================================== */
+
+:root {
+  --bg: #121110;
+  --surface: #1c1a18;
+  --surface-2: #26231f;
+  --line: #3a3631;
+  --text: #f2ede4;
+  --text-dim: #a89f92;
+  --accent: #3ecf8e;
+  --accent-dim: #2a9d6f;
+  --danger: #e5604d;
+
+  --radius-card: 16px;
+  --radius-input: 10px;
+  --radius-cover: 12px;
+  --radius-pill: 999px;
+
+  --font-display: "Bricolage Grotesque", "Arial Black", sans-serif;
+  --font-text: "Karla", "Segoe UI", sans-serif;
+
+  --gutter: clamp(16px, 4vw, 32px);
+  --gap: 16px;
+  --gap-lg: 24px;
+  --gap-xl: 32px;
+  --section-gap: 40px;
+
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-pop: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Author display rules must never override the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100dvh;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+button {
+  font-family: var(--font-text);
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* --------------------------------------------------------------------------
+   Layout primitives
+   -------------------------------------------------------------------------- */
+
+.container {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.container--wide {
+  max-width: 1720px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.stack--lg {
+  gap: var(--gap-lg);
+}
+
+.stack--xl {
+  gap: var(--gap-xl);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.row--wrap {
+  flex-wrap: wrap;
+}
+
+.section {
+  margin-top: var(--section-gap);
+}
+
+/* --------------------------------------------------------------------------
+   View switch (motion spec: 180ms fade + 8px rise)
+   -------------------------------------------------------------------------- */
+
+.view {
+  animation: view-in 180ms var(--ease-out) both;
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Typography helpers
+   -------------------------------------------------------------------------- */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
+.display--lg {
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.display--md {
+  font-size: clamp(1.5rem, 3.5vw, 2.1rem);
+}
+
+.display--num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.muted-note {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  max-width: 52ch;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons (pill radius; :active scale(.98) tactile push)
+   -------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 20px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 160ms var(--ease-out), transform 120ms var(--ease-out),
+    opacity 160ms var(--ease-out), border-color 160ms var(--ease-out);
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: #2e2a25;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: #101512;
+}
+
+.btn--primary:hover {
+  background: #57dca2;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--line);
+}
+
+.btn--ghost:hover {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn--sm {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+}
+
+.btn--lg {
+  min-height: 50px;
+  padding: 0 28px;
+  font-size: 1.05rem;
+}
+
+.btn--icon {
+  min-height: 42px;
+  min-width: 42px;
+  padding: 0 12px;
+}
+
+/* --------------------------------------------------------------------------
+   Inputs (radius 10)
+   -------------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.input {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 1rem;
+  transition: border-color 160ms var(--ease-out);
+}
+
+.input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.input:hover {
+  border-color: #4a453e;
+}
+
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
+
+.input[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------
+   Guess fields with verdicts (160ms fill + 1px scale pop; red flash, editable)
+   -------------------------------------------------------------------------- */
+
+.guess {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.guess__input {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 1rem;
+  transition: border-color 160ms var(--ease-out), background 160ms var(--ease-out);
+}
+
+.guess__input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.guess__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.guess--correct .guess__input {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #101512;
+  font-weight: 700;
+}
+
+.guess--correct {
+  animation: verdict-pop 160ms var(--ease-pop) both;
+}
+
+.guess--incorrect .guess__input {
+  animation: verdict-flash 160ms var(--ease-pop);
+}
+
+@keyframes verdict-pop {
+  from {
+    transform: scale(0.99);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes verdict-flash {
+  0% {
+    border-color: var(--danger);
+    background: rgba(229, 96, 77, 0.12);
+  }
+  100% {
+    border-color: var(--line);
+  }
+}
+
+/* Artist slots (open dashed → filled accent chip) */
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px dashed var(--line);
+  color: var(--text-dim);
+  font-weight: 500;
+  transition: border-color 160ms var(--ease-out), background 160ms var(--ease-out);
+}
+
+.slot--filled {
+  border-style: solid;
+  border-color: var(--accent);
+  background: rgba(62, 207, 142, 0.12);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.slot--incorrect {
+  border-style: solid;
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: verdict-flash 160ms var(--ease-pop);
+}
+
+/* --------------------------------------------------------------------------
+   Cards (radius 16)
+   -------------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--gap-lg);
+}
+
+/* --------------------------------------------------------------------------
+   Chips
+   -------------------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.chip--ok {
+  background: rgba(62, 207, 142, 0.14);
+  color: var(--accent);
+}
+
+.chip--muted {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.chip--solved {
+  background: var(--accent);
+  color: #101512;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* --------------------------------------------------------------------------
+   Banners
+   -------------------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.95rem;
+}
+
+.banner .icon {
+  margin-top: 2px;
+  flex: none;
+}
+
+.banner--premium {
+  border-color: var(--accent-dim);
+  background: rgba(62, 207, 142, 0.08);
+  color: var(--accent);
+}
+
+.banner--rate {
+  border-color: #c9a45c;
+  background: rgba(201, 164, 92, 0.08);
+  color: #d9b878;
+}
+
+.banner--error {
+  border-color: var(--danger);
+  background: rgba(229, 96, 77, 0.08);
+  color: var(--danger);
+}
+
+.banner--session {
+  border-color: #c9a45c;
+  background: rgba(201, 164, 92, 0.08);
+  color: #d9b878;
+}
+
+.banner__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+/* --------------------------------------------------------------------------
+   Nav
+   -------------------------------------------------------------------------- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-lg);
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.nav__logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.nav__logo .dot {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: 2px;
+}
+
+.nav__links {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.nav__link {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: color 160ms var(--ease-out), background 160ms var(--ease-out);
+}
+
+.nav__link:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.nav__link--active {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 6px;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+}
+
+.nav__spacer {
+  flex: 1;
+}
+
+.nav__logout {
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: var(--radius-pill);
+  transition: color 160ms var(--ease-out);
+}
+
+.nav__logout:hover {
+  color: var(--danger);
+}
+
+/* --------------------------------------------------------------------------
+   Login view
+   -------------------------------------------------------------------------- */
+
+.login {
+  min-height: calc(100dvh - 80px);
+  display: flex;
+  align-items: center;
+}
+
+.login__inner {
+  max-width: 560px;
+}
+
+.login__hero {
+  font-size: clamp(2.6rem, 7vw, 4.2rem);
+  margin-bottom: var(--gap);
+}
+
+.login__sub {
+  font-size: 1.15rem;
+  color: var(--text-dim);
+  max-width: 34ch;
+  margin-bottom: var(--gap-xl);
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  align-items: flex-start;
+}
+
+/* --------------------------------------------------------------------------
+   Hub
+   -------------------------------------------------------------------------- */
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--gap-lg);
+}
+
+@media (max-width: 768px) {
+  .hub-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hub-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--gap-xl);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.hub-card:hover {
+  border-color: var(--accent-dim);
+}
+
+.hub-card:active {
+  transform: scale(0.99);
+}
+
+.hub-card--feature {
+  min-height: 300px;
+  justify-content: space-between;
+}
+
+.hub-card--stack {
+  min-height: 140px;
+}
+
+.hub-card__title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.6rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hub-card__num {
+  color: var(--accent);
+}
+
+.hub-card__desc {
+  color: var(--text-dim);
+}
+
+.hub-visual {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 56px;
+}
+
+.hub-visual__bar {
+  width: 7px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.hub-visual__bar:nth-child(1) { height: 34%; }
+.hub-visual__bar:nth-child(2) { height: 58%; }
+.hub-visual__bar:nth-child(3) { height: 80%; }
+.hub-visual__bar:nth-child(4) { height: 100%; }
+.hub-visual__bar:nth-child(5) { height: 64%; }
+.hub-visual__bar:nth-child(6) { height: 42%; }
+
+.hub-blur-tile {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-cover);
+  background: var(--surface-2);
+  filter: blur(4px);
+  border: 1px solid var(--line);
+}
+
+.hub-year {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.4rem;
+  color: var(--accent);
+}
+
+.hub-status {
+  display: flex;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  margin-top: var(--gap);
+}
+
+/* --------------------------------------------------------------------------
+   Clip bar (fills in steps while playing)
+   -------------------------------------------------------------------------- */
+
+.clip {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.clip__bar {
+  flex: 1;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.clip__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width 50ms linear;
+}
+
+.clip__label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+  text-align: right;
+}
+
+.clip__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   Game guess panel
+   -------------------------------------------------------------------------- */
+
+.guess-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin-top: var(--gap-lg);
+}
+
+.guess-panel__title {
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.solved-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--radius-card);
+  background: rgba(62, 207, 142, 0.1);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Cover (Game 1 reveal / Game 2 blur)
+   -------------------------------------------------------------------------- */
+
+.cover {
+  border-radius: var(--radius-cover);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.cover--hidden {
+  opacity: 0;
+  filter: blur(24px);
+  transition: opacity 300ms var(--ease-out), filter 300ms var(--ease-out);
+}
+
+.cover--revealed {
+  opacity: 1;
+  filter: blur(0);
+  transition: opacity 300ms var(--ease-out), filter 300ms var(--ease-out);
+}
+
+.cover--blur-0 { filter: blur(30px); }
+.cover--blur-1 { filter: blur(24px); }
+.cover--blur-2 { filter: blur(18px); }
+.cover--blur-3 { filter: blur(12px); }
+.cover--blur-4 { filter: blur(6px); }
+.cover--blur-5 { filter: blur(0px); }
+
+.cover-wrap {
+  position: relative;
+  border-radius: var(--radius-cover);
+  overflow: hidden;
+}
+
+.cover-focus {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cover-focus__chip {
+  background: rgba(18, 17, 16, 0.78);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  backdrop-filter: blur(4px);
+}
+
+.cover-placeholder {
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: var(--radius-cover);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.cover-placeholder .icon {
+  width: 44px;
+  height: 44px;
+}
+
+/* --------------------------------------------------------------------------
+   Tracklist (Game 2 reveal)
+   -------------------------------------------------------------------------- */
+
+.tracklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tracklist__row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tracklist__row:last-child {
+  border-bottom: none;
+}
+
+.tracklist__num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+.tracklist__name {
+  font-weight: 600;
+}
+
+.tracklist__featured {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+/* --------------------------------------------------------------------------
+   Year game hints
+   -------------------------------------------------------------------------- */
+
+.hint-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+}
+
+.hint-arrow {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--accent);
+  min-width: 96px;
+}
+
+/* --------------------------------------------------------------------------
+   Toasts (220ms slide-in, auto-dismiss 3.5s)
+   -------------------------------------------------------------------------- */
+
+.toast-host {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius-pill);
+  padding: 10px 18px;
+  font-size: 0.925rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  animation: toast-in 220ms var(--ease-pop) both;
+}
+
+.toast--success {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.toast--error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.toast--out {
+  animation: toast-out 220ms var(--ease-out) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Skeletons
+   -------------------------------------------------------------------------- */
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton__row {
+  height: 46px;
+  border-radius: var(--radius-input);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 25%,
+    var(--surface-2) 50%,
+    var(--surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Library view
+   -------------------------------------------------------------------------- */
+
+.lib-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lib-counts {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.pending-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pending-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pending-row:last-child {
+  border-bottom: none;
+}
+
+.pending-row__thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-cover);
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.pending-row__title {
+  font-weight: 600;
+}
+
+.pending-row__artists {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+.pool-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pool-row:last-child {
+  border-bottom: none;
+}
+
+/* --------------------------------------------------------------------------
+   Selects
+   -------------------------------------------------------------------------- */
+
+.select {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 0.95rem;
+}
+
+/* --------------------------------------------------------------------------
+   Volume
+   -------------------------------------------------------------------------- */
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+}
+
+.volume input[type="range"] {
+  width: 110px;
+  accent-color: var(--accent);
+}
+
+.volume input[type="range"]:disabled {
+  opacity: 0.4;
+}
+
+/* --------------------------------------------------------------------------
+   Icons / misc
+   -------------------------------------------------------------------------- */
+
+.icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.import-guide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  align-items: flex-start;
+  padding: var(--gap-xl);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-card);
+}
+
+.import-guide__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.premium-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion: everything collapses to instant (states still update)
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .view {
+    animation: none;
+  }
+
+  .clip__fill {
+    transition: none;
+  }
+
+  .skeleton__row {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Round game (merged mode) — single screen, all challenges alive at once
+   -------------------------------------------------------------------------- */
+
+.round__header {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+.round__title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.2rem;
+}
+
+.round__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap-lg);
+}
+
+/* Wide layout: cover spans both rows, challenge cards and lyrics stack in
+   the right column so the album stays visible while doing the lyrics. */
+@media (min-width: 900px) {
+  .round__grid {
+    grid-template-areas:
+      "cover cards"
+      "cover lyrics";
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    gap: var(--gap-lg);
+    align-items: start;
+  }
+  .round__col--left {
+    grid-area: cover;
+  }
+  .round__col--right {
+    grid-area: cards;
+  }
+  .round__lyrics {
+    grid-area: lyrics;
+  }
+}
+
+/* Challenge cards reflow into their own columns as width allows. */
+@media (min-width: 1280px) {
+  .round__col--right {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--gap-lg);
+    align-content: start;
+  }
+}
+
+/* Grow the cover column on very wide screens. */
+@media (min-width: 1500px) {
+  .round__grid {
+    grid-template-columns: minmax(460px, 560px) minmax(0, 1fr);
+  }
+}
+
+/* Sticky cover only on tall + wide viewports so it stays in view while
+   scrolling the lyrics; never sticky on short windows. */
+@media (min-width: 1100px) and (min-height: 760px) {
+  .round__col--left {
+    position: sticky;
+    top: var(--gap-lg);
+    align-self: start;
+  }
+}
+
+.cover-block {
+  max-width: 620px;
+}
+
+.round__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+/* Shared cover — THE only album image on screen */
+.cover-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--gap-lg);
+}
+
+.cover-modes {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  align-self: flex-start;
+}
+
+.cover-mode {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-family: var(--font-text);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+
+.cover-mode[aria-pressed="true"] {
+  background: var(--accent);
+  color: #101512;
+}
+
+.cover-stage {
+  border-radius: var(--radius-cover);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.cover-canvas {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: filter 300ms var(--ease-out);
+}
+
+.cover-canvas--pixel {
+  image-rendering: pixelated;
+}
+
+/* Fresh cover: the first paint must be instant, never a fade-in from focus. */
+.cover-canvas--snap {
+  transition: none;
+}
+
+.cover-hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.round__audio-note {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--gap-lg);
+}
+
+.round__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  margin-top: var(--gap-lg);
+}
+
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+
+.ghost-link:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Album tracklist guessing game (Round mode) — album card spans the full
+   width of the challenge-cards grid; rows reflow into columns on wide screens.
+   -------------------------------------------------------------------------- */
+
+/* The album card is the tallest: once the right column is a multi-column grid
+   it spans every column so its internal layout stays wide. */
+@media (min-width: 1280px) {
+  .round__col--right .album-card {
+    grid-column: 1 / -1;
+  }
+}
+
+.album-tracks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+/* Rows reflow into 2+ columns on wide screens so a 12-track album isn't an
+   endless single column. */
+@media (min-width: 560px) {
+  .album-tracks {
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  }
+}
+
+.album-track {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.album-track:last-child {
+  border-bottom: none;
+}
+
+@media (min-width: 560px) {
+  .album-track {
+    border-bottom: none;
+  }
+}
+
+.album-track__num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  padding-top: 12px;
+}
+
+.album-track__main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.album-track__artists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --------------------------------------------------------------------------
+   Lyrics stage
+   -------------------------------------------------------------------------- */
+
+.lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow: auto;
+  padding: var(--gap);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.lyrics__line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  line-height: 1.85;
+}
+
+.lyrics__gap {
+  height: 0.7em;
+}
+
+.lyrics__w {
+  font-family: var(--font-text);
+  font-size: 1.05rem;
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 160ms var(--ease-out), background 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.lyrics__w:hover {
+  color: var(--text);
+}
+
+.lyrics__w--revealed {
+  color: var(--text);
+  letter-spacing: normal;
+}
+
+.lyrics__w--cursor {
+  color: var(--accent);
+  background: rgba(62, 207, 142, 0.12);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  font-weight: 700;
+}
+
+.lyrics__w--known {
+  color: var(--accent-dim);
+  box-shadow: inset 0 -2px 0 var(--accent-dim);
+}
+
+.lyrics__w--enter {
+  animation: lyric-pop 220ms var(--ease-pop) both;
+}
+
+@keyframes lyric-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.lyrics__punct {
+  color: var(--text-dim);
+}
+
+.lyrics__controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lyrics__manual {
+  width: 100%;
+  min-height: 120px;
+  font-family: var(--font-text);
+  resize: vertical;
+  padding: 10px 14px;
+}
+
+.lyrics__empty {
+  padding: var(--gap-lg);
+  gap: var(--gap);
+  align-items: flex-start;
+}
+
+/* --------------------------------------------------------------------------
+   Hub — round feature card + practice label
+   -------------------------------------------------------------------------- */
+
+.hub-section-label {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-top: var(--section-gap);
+}
+
+.hub-round {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hub-round__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.hub-round__dot:nth-child(1) { opacity: 1; }
+.hub-round__dot:nth-child(2) { opacity: 0.8; }
+.hub-round__dot:nth-child(3) { opacity: 0.6; }
+.hub-round__dot:nth-child(4) { opacity: 0.4; }

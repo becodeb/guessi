@@ -1,0 +1,73 @@
+{
+  "schema": "gentle-ai.remediation-evidence/v1",
+  "transaction": {
+    "lineage_id": "",
+    "generation": 4,
+    "fix_batch": 0,
+    "failed_evidence_revision": "sha256:2a1d250807de8ce3d191c9650d9f6b69a37f42bda1f85f3106813bb2e5fe631d"
+  },
+  "defects": [
+    {
+      "id": "SMOKE-1",
+      "summary": "False fatal banner: not_ready (normal SDK lifecycle) was treated as fatal and mapped to the persistent error banner, which never cleared when the device reconnected.",
+      "fix": "player.js: not_ready clears deviceId only (no notifyError); new onReady(cb) fired on SDK ready. main.js: onReady resets status to ready + updateBanners() unless premium-denied; ensurePlayer() calls updateBanners() on all exit paths."
+    },
+    {
+      "id": "SMOKE-2",
+      "summary": "prime() left the track playing (immediate pause lost before stream start); playClip() could run away when getCurrentState() returned null (poll never reached targetMs).",
+      "fix": "player.js: prime() awaits ensurePaused() (poll ~100ms up to 1200ms for paused === false, pause(), then verify paused === true with <=6 bounded retries, each retrying pause() so unreadable state can never be left playing). playClip() calls bestEffortActivate() and sets state.failsafeId = setTimeout(stop, targetMs + 600), cleared inside stop()."
+    },
+    {
+      "id": "SMOKE-3",
+      "summary": "Game 1 album cover was recognizable before the guess (.cover--hidden opacity 0.22 / blur 6px).",
+      "fix": "styles.css: .cover--hidden opacity 0 / blur 24px (transitions kept, .cover--revealed untouched). clip-game.js: neutral alt 'Portada del album' while hidden; revealCover() sets the real alt."
+    }
+  ],
+  "files_changed": [
+    "src/player.js",
+    "src/main.js",
+    "src/games/clip-game.js",
+    "styles.css"
+  ],
+  "changed_lines": {
+    "total_touched": 112,
+    "net_added": 100,
+    "by_file": {
+      "src/player.js": { "added": 80, "removed": 7 },
+      "src/main.js": { "added": 15, "removed": 2 },
+      "src/games/clip-game.js": { "added": 3, "removed": 1 },
+      "styles.css": { "added": 2, "removed": 2 }
+    }
+  },
+  "autoplay_failed": {
+    "premium_flag": "unchanged — no longer set to false",
+    "action": "best-effort state.player.activateElement() + console.warn; must not raise the fatal banner"
+  },
+  "evidence": {
+    "focused_test": {
+      "command": "node tests/match.test.mjs",
+      "result": "match.test.mjs: 58 assertions passed, 0 failed",
+      "exit": 0
+    },
+    "syntax_checks": {
+      "command": "13 JS/MJS files copied to /tmp/r2-*.mjs + node --check each",
+      "result": "OK x13 — 'ALL SYNTAX OK (13/13)', 0 failures"
+    },
+    "static_smoke": {
+      "command": "python3 -m http.server 8099 (repo root; 8080/8081 occupied by pre-existing external listeners) + curl -sI -o /dev/null -w \"%{http_code}\" for 17 assets",
+      "result": "200 x17 (index.html, styles.css, 9 src/*.js, 3 src/games/*.js, tests/match.test.mjs, README.md, docs/smoke-checklist.md); server killed, port 8099 confirmed free"
+    },
+    "traces": {
+      "prime_wait_pause_verify": "ensurePaused player.js:174 -> waitForPlaying(1200) :176 -> pause() :177 -> verify loop <=6 :178-183 (paused === true return, else pause()) -> called by prime() :198",
+      "failsafe": "state.failsafeId declared :16; set in playClip :226 (targetMs + 600); cleared in stop :244-246",
+      "not_ready_and_onReady": "notifyError('not_ready') grep count 0 (removed); ready -> notifyReady() :96; onReady exported :36; main.js player.onReady :238; prime-failed -> toast :227-229",
+      "cover_hidden": "styles.css .cover--hidden opacity 0 / blur 24px :844-847; neutral alt 'Portada del álbum' clip-game.js:284; real alt in revealCover :313"
+    },
+    "candidate_state": "not_ready informational only; a later ready self-heals the banner via onReady; prime-failed surfaces as a transient toast; priming guaranteed to end paused; clip playback double-guarded (50ms poll + wall-clock failsafe cleared by stop()); Game 1 artwork invisible and alt-neutral until album solve."
+  },
+  "out_of_scope_observations": [
+    "album-game.js cover alt is 'Portada borrosa de ${album.name}' — same spoiler class as SMOKE-3, outside the authorized round-2 scope; left untouched.",
+    "remediation-evidence.json (round 1) was NOT modified — its bytes stay bound to the settled revision."
+  ],
+  "runtime_notes": "The real reset is in-app with a Premium session: an SDK not_ready -> ready cycle must clear the banner without reload, and priming must leave the track paused (smoke checklist). Browser E2E unavailable in this environment."
+}

@@ -1,0 +1,145 @@
+# de oído
+
+Juegos de reconocimiento musical contra tu propia biblioteca de Spotify.
+Vanilla HTML/CSS/JS (ES modules), cero dependencias, sin build. Se sirve con un
+servidor estático local y se juega en el navegador.
+
+Un modo principal y tres de práctica suelta:
+
+- **Ronda completa** (modo principal) — se sortea *una* canción al azar y los
+  **cuatro desafíos viven en la misma pantalla a la vez**, en cualquier orden
+  (sin etapas ni ronda secuencial). Arriba hay **una sola portada del álbum**
+  compartida, oculta con tres modos conmutables — **Difusa** (desenfoque
+  fuerte, arranca ~72px), **Pixeles** (pixelado real por canvas, bloques
+  grandes) y **Color** (borrón enorme + saturación, casi un color plano) — y se
+  revela a clics, manteniendo el progreso al cambiar de modo. Debajo, una sola
+  **barra de audio** (Reproducir + 0,1 s) alimenta a la vez los desafíos de
+  **canción** y **año**; y cuatro tarjetas independientes: **La canción** (solo
+  el título), **El álbum y los artistas** (adivinás el álbum y sus artistas, y además cada canción del álbum con su artista en una grilla siempre visible; al resolver revela la portada), **¿De qué año?** (pistas de más nuevo/viejo) y
+  **La letra** (palabra por palabra). Cada tarjeta tiene su chip de estado. El
+  álbum y la letra funcionan **sin Premium**; la canción, el año y el audio se
+  degradan solos (marcados «Requiere Premium») cuando no tenés Premium. La
+  barra «Ver respuestas» lo revela todo en el lugar; «Otra canción» sortea de
+  nuevo.
+- **Práctica suelta** (los tres juegos originales, por separado):
+  - **La primera décima** — instante de sonido (0,1 s, acumulable) y adivinás
+    título, artistas y álbum. Requiere **Spotify Premium** (Web Playback SDK).
+  - **Portada borrosa** — portada desenfocada, un clic por paso; al resolver se
+    revela la lista de temas. Funciona **sin Premium**.
+  - **¿De qué año?** — el mismo clip y adivinás el año con pistas de más
+    nuevo/más viejo y cercanía. Requiere Premium.
+
+## Requisitos
+
+- Una cuenta de Spotify con **Premium** para los juegos de audio (1 y 3).
+- Navegador de escritorio (Chrome recomendado; el SDK de reproducción no se
+  activa automáticamente en iOS después de transferir el dispositivo).
+- Python 3 (para el servidor local).
+
+## Setup paso a paso
+
+1. **Crear la app en el Spotify Dashboard**:
+   https://developer.spotify.com/dashboard → *Create app*.
+   - En *API settings* marcá **Web API** y **Web Playback SDK**.
+   - **Redirect URIs**: agregá exactamente cada origen desde el que servís la
+     app, con barra final incluida: `http://127.0.0.1:8080/` para desarrollo
+     (`localhost` no se acepta) y `https://guessi.becode.com.ar/` para
+     producción.
+2. **Client ID**: ya está cargado en `src/config.js`. Si usás otra app de
+   Spotify, reemplazalo por el tuyo (p. ej. `CLIENT_ID = "a1b2c3..."`).
+3. **Servir el proyecto** desde la raíz del repo:
+
+   ```bash
+   python3 -m http.server 8080
+   ```
+
+4. Abrí **http://127.0.0.1:8080/** e iniciá sesión con Spotify.
+5. En **Biblioteca**, importá desde playlists, «Me gusta» o búsqueda, y añadí
+   canciones a **«Lo que sé»** para que entren en los juegos.
+
+## Deploy en Coolify
+
+El repo trae `Dockerfile` (Nginx sirviendo el sitio estático en el puerto 80) y
+`docker-compose.yml`. El compose **no publica puertos**: el proxy de Coolify
+enruta el dominio al puerto interno 80. La app no tiene build ni variables de
+entorno — el Client ID es público (PKCE) y el redirect se calcula con
+`window.location.origin`.
+
+1. En Coolify: **+ New → Public Repository** → `https://github.com/becodeb/guessi`.
+2. Build Pack: **Docker Compose** (dejá el `docker-compose.yml` de la raíz).
+3. En el servicio `web`, cargá el dominio `https://guessi.becode.com.ar`
+   (sin sufijo de puerto: el interno es 80) y activá HTTPS.
+4. **Deploy**.
+5. En el Spotify Dashboard agregá `https://guessi.becode.com.ar/` como
+   Redirect URI (ver *Setup paso a paso*).
+
+Para probar la imagen localmente:
+
+```bash
+docker build -t guessi .
+docker run --rm -p 8080:80 guessi
+```
+
+## Notas de plataforma
+
+- **Premium**: los juegos de audio usan el Spotify Web Playback SDK
+  (`sdk.scdn.co/spotify-player.js`, inyectado bajo demanda). Sin Premium se
+  muestra un aviso y la biblioteca + el juego de portadas siguen disponibles.
+- **Modo Dev de Spotify**: las apps en Dev Mode funcionan solo para hasta
+  5 usuarios en la allowlist (el dueño de la app) y tienen cuota de 30 s
+  (respuestas `429` / `QUOTA_EXCEEDED`). La app frena, espera el `Retry-After`
+  y avisa «Spotify va lento ahora mismo». Para uso compartido hay que enviar
+  la app a *Extended Quota Mode* desde el Dashboard.
+- **iOS**: el SDK de reproducción no arranca la reproducción automáticamente
+  después de una transferencia de dispositivo; si no escuchás nada, tocá
+  Reproducir de nuevo.
+- **Sesión**: el token de refresco expira a los ~6 meses; en ese caso la app
+  pide volver a iniciar sesión.
+
+## Estructura
+
+```
+index.html            Shell: fuentes, sprite SVG, #app (SDK se inyecta lazy)
+styles.css            Tokens y componentes (tema oscuro único)
+Dockerfile            Imagen Nginx con el sitio estático (puerto 80)
+nginx.conf            Server block: SPA fallback, gzip, no-cache
+docker-compose.yml    Servicio `web` para Coolify (sin ports, expose 80)
+src/config.js         Client ID, redirect, scopes, endpoints
+src/main.js           Router por hash, estado, navegación, banners
+src/auth.js           PKCE + refresco silencioso
+src/spotify-api.js    Wrapper fetch (401→refresh, 429→backoff) + endpoints
+src/player.js         Motor Web Playback SDK (clip 0,1 s, prime, volumen)
+src/library.js        Importación, «Lo que sé», dedupe, cache de tracklists
+src/storage.js        localStorage versionado (deoido.v1.*)
+src/match.js          Normalización + alias + Levenshtein (puro)
+src/ui.js             Helpers DOM (el, toast, skeleton, iconos)
+src/lyrics-engine.js  Motor puro de la letra (tokenizer + máquina de estados)
+src/lyrics.js         Fuente de letras (LRCLIB) + cache local + pegado manual
+src/games/round-game.js  Ronda completa (los cuatro desafíos en uno)
+src/games/*.js        Los tres juegos de práctica suelta
+tests/match.test.mjs  Harness sin framework: node tests/match.test.mjs
+tests/lyrics.test.mjs Harness sin framework de la letra: node tests/lyrics.test.mjs
+docs/smoke-checklist.md  Chequeo manual de humo
+```
+
+## Tests
+
+```bash
+npm test
+```
+
+Corre los dos harness sin framework: `tests/match.test.mjs` (matching) y
+`tests/lyrics.test.mjs` (motor de la letra). Exit 0 = ok.
+
+## Letras (LRCLIB)
+
+La letra del desafío de la ronda se busca en **LRCLIB** (`lrclib.net`), un
+servicio público, sin clave y con CORS habilitado (verificado 2026-09-17). Se
+cachea en localStorage (`deoido.v1.lyrics`): 30 días para aciertos, 7 días para
+«no encontrada»/«instrumental». Los errores de red no se cachean. Si LRCLIB no
+tiene la letra, podés **pegarla manualmente** (`deoido.v1.manualLyrics`): esa
+copia gana sobre la red y no expira.
+
+## Verificación manual
+
+Seguí `docs/smoke-checklist.md` después del setup.

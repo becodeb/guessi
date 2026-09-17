@@ -1,0 +1,7 @@
+# SDD / agent local cache — not shared
+.atl/
+
+# Local env (Coolify injects its own)
+.env
+.env.*
+!.env.example

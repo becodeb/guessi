@@ -1,0 +1,9 @@
+.git
+.gitignore
+.atl
+node_modules
+docker-compose.yml
+openspec
+docs
+tests
+*.md

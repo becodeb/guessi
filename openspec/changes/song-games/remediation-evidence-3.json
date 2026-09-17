@@ -1,0 +1,64 @@
+{
+  "schema": "gentle-ai.remediation-evidence/v1",
+  "transaction": {
+    "lineage_id": "",
+    "generation": 5,
+    "fix_batch": 0,
+    "failed_evidence_revision": "sha256:2a1d250807de8ce3d191c9650d9f6b69a37f42bda1f85f3106813bb2e5fe631d"
+  },
+  "note": "Round 3 is smoke-feedback-driven: the failed_evidence_revision carried here is the chain's failed verify of record (same value bound in round 2); this round addresses the actual root cause of the playback symptoms reported in the user's real smoke test.",
+  "root_cause": {
+    "id": "SMOKE-ROOTCAUSE",
+    "summary": "src/spotify-api.js request() ended with `return res.json()` unconditionally. PUT /me/player/play returns 204 No Content (empty body) → res.json() throws SyntaxError → the throw propagated to prime()'s catch in src/player.js (notifyError(\"prime-failed\")) even though Spotify had already received the play command and started the track. Consequences: the «No se pudo preparar la canción» toast (round 2) / persistent «No se pudo conectar el reproductor» banner (round 1), prime() returned false → ensurePaused() never ran → the track kept playing with no pause, and the game's Play button was dead (if (!round.primed) return). Rounds 1 and 2 symptoms shared this single cause.",
+    "fix": "request() success path: 204/205 → return null; otherwise read text; empty text → null; else JSON.parse. A successful play PUT now resolves instead of throwing. Other behaviors (401 refresh+retry, 429/QUOTA backoff, 403 handling) unchanged."
+  },
+  "fixes": {
+    "A_root_cause": "src/spotify-api.js — 204/205/empty-body success path returns null (no throw).",
+    "B_silence_guard": "src/player.js — state.clipActive (false initial); playClip() sets true, stop() sets false; player_state_changed listener pauses when !state.clipActive && st && st.paused === false. Defense in depth: the device is never left playing outside a clip regardless of missed/late pauses.",
+    "C_play_never_dead": "clip-game.js + year-game.js Play handlers — if not primed: one fresh-prime retry (round.priming = ctx.player.prime(round.track.uri); round.primed = await round.priming); still not primed → ui.toast(\"El reproductor todavía no está listo. Probá de nuevo.\", \"error\") and return; if primed → play as usual. Existing in-flight-prime await kept."
+  },
+  "files_changed": [
+    "src/spotify-api.js",
+    "src/player.js",
+    "src/games/clip-game.js",
+    "src/games/year-game.js"
+  ],
+  "changed_lines": {
+    "total_touched": 33,
+    "net_added": 30,
+    "by_file": {
+      "src/spotify-api.js": { "added": 5, "removed": 1 },
+      "src/player.js": { "added": 7, "removed": 0 },
+      "src/games/clip-game.js": { "added": 9, "removed": 1 },
+      "src/games/year-game.js": { "added": 9, "removed": 1 }
+    }
+  },
+  "evidence": {
+    "focused_test": {
+      "command": "node tests/match.test.mjs",
+      "result": "match.test.mjs: 58 assertions passed, 0 failed",
+      "exit": 0
+    },
+    "syntax_checks": {
+      "command": "13 JS/MJS files copied to /tmp/r3-*.mjs + node --check each",
+      "result": "OK x13 — 'ALL SYNTAX OK (13/13)', 0 failures"
+    },
+    "static_smoke": {
+      "command": "python3 -m http.server 8099 (repo root; 8080/8081 occupied by pre-existing external listeners) + curl -sI -o /dev/null -w \"%{http_code}\" for 17 assets",
+      "result": "200 x17 (index.html, styles.css, 9 src/*.js, 3 src/games/*.js, tests/match.test.mjs, README.md, docs/smoke-checklist.md); server killed, port 8099 confirmed free"
+    },
+    "traces": {
+      "a_204_empty_null": "spotify-api.js:100-104 — 204/205 → null; otherwise text → JSON.parse or null; old `return res.json()` gone",
+      "b_prime_reaches_ensurePaused": "player.js:199 apiFetch → :203 await ensurePaused(); notifyError('prime-failed') only in the catch :210",
+      "c_state_changed_guard": "player.js:114-116 — player_state_changed → if (!state.clipActive && st && st.paused === false) state.player?.pause()",
+      "d_clipActive_set_cleared": "player.js:17 declared, :116 guard, :225 set true (playClip), :250 cleared (stop)",
+      "e_retry_toast": "clip-game.js:103-109 (retry :103-105, toast :108) · year-game.js:123-129 (retry :123-125, toast :128)"
+    },
+    "candidate_state": "PLAY PUT (204) resolves → prime() reaches ensurePaused() → track ends paused; the toast/dead-Play symptom loses its cause. Play retries once with a fresh prime, then toasts a clear next step. player_state_changed silence guard pauses whenever no clip is active."
+  },
+  "out_of_scope_observations": [
+    "round-2 files remediation-evidence.json and remediation-evidence-2.json were NOT modified (bytes stay bound to their settled revisions).",
+    "album-game.js cover alt 'Portada borrosa de ${album.name}' — same spoiler class as round-2 SMOKE-3, still outside authorized scope; left untouched."
+  ],
+  "runtime_notes": "The reset that matters is in-app with a Premium session: first-tap Play must work (prime resolves on 204) and no audio may continue after the clip ends (silence guard + wall-clock failsafe). Browser E2E unavailable in this environment; manual steps in docs/smoke-checklist.md."
+}

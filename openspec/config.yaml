@@ -1,0 +1,59 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Project: de-oido — static, no-build-step web app (greenfield)
+  Stack: vanilla HTML/CSS/JS (ES modules); no framework, no bundler
+  Runtime: served via local static server, executes in the browser
+  Integrations: Spotify Web API + Spotify Web Playback SDK (browser-side)
+  Persistence: song library stored in localStorage
+  Language: UI copy in Spanish (neutral); code + SDD artifacts in English
+
+strict_tdd: false
+
+testing:
+  strict_tdd: false
+  detected: 2026-09-17
+  runner:
+    available: false
+    command: ""
+    framework: none
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter: none
+    type_checker: none
+    formatter: none
+  notes: |
+    Greenfield project: no test framework yet and none required yet.
+    Strict TDD is disabled until a runner is introduced. Re-run sdd-init
+    after adding a test framework (e.g. vitest, playwright) to refresh this block.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Document architecture decisions with rationale
+    - Diagram Spotify authorization + Web Playback SDK integration flows
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

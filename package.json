@@ -1,0 +1,11 @@
+{
+  "name": "de-oido",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Song-guessing games played against your own Spotify library. Vanilla ES modules, zero dependencies.",
+  "scripts": {
+    "test": "node tests/match.test.mjs && node tests/lyrics.test.mjs",
+    "serve": "python3 -m http.server 8080"
+  }
+}
