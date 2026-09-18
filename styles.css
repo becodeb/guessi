@@ -2047,10 +2047,18 @@ button {
   flex-wrap: wrap;
 }
 
+/* Largest type on the screen: every section label now sits below it. */
 .round__title {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.2rem;
+  font-size: 1.35rem;
+  flex: none;
+}
+
+/* Two labels per action, one per breakpoint. `aria-label` on the button carries
+   the full wording, so only one of these is ever announced. */
+.round__act-short {
+  display: none;
 }
 
 .round__actions {
@@ -2061,8 +2069,10 @@ button {
   margin-left: auto;
 }
 
-/* Phones: the bar must not eat the viewport. Shorter buttons and tighter
-   padding keep it around 90px even when the actions wrap onto their own row. */
+/* Phones: the bar is one line, full stop. It used to wrap the actions onto a
+   second row and eat 92px of a 844px viewport. The title and the segment strip
+   are the redundant parts (the view is the round; the chip already states the
+   score in words), so they go and the actions take their short labels. */
 @media (max-width: 768px) {
   .round__bar {
     padding: 8px var(--gutter);
@@ -2070,16 +2080,46 @@ button {
 
   .round__header {
     gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .round__title {
+    display: none;
+  }
+
+  /* Segments in, words out: "0/4 resueltos" plus two buttons overflow 390px.
+     The chip stays in the accessibility tree (it is the only text form of the
+     score) and the aria-hidden segments carry it on screen. */
+  .round__progress .chip {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .round__segments {
+    flex: none;
   }
 
   .round__actions {
     gap: 6px;
+    flex-wrap: nowrap;
   }
 
   .round__actions .btn {
     min-height: 38px;
     padding: 0 14px;
     font-size: 0.875rem;
+  }
+
+  .round__act-full {
+    display: none;
+  }
+
+  .round__act-short {
+    display: inline;
   }
 }
 
@@ -2114,69 +2154,90 @@ button {
   border-color: var(--accent);
 }
 
+/* The round reads as ONE centered column of cards.
+   The previous "cover | cards / cover | lyrics" grid tied a fixed-width cover
+   column to a right column whose height swings by ~1500px as the collapsible
+   sections open and close, so one side was always a canyon of dead space. A
+   single column has no second side to disagree with, and it puts every control
+   at a reading measure instead of stretching inputs to 1000px. */
+.round__bar > .round__header,
+.round__grid,
+.round__footer {
+  max-width: 920px;
+  margin-inline: auto;
+  width: 100%;
+}
+
 .round__grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--gap-lg);
-}
-
-/* Wide layout: cover spans both rows, challenge cards and lyrics stack in
-   the right column so the album stays visible while doing the lyrics. */
-@media (min-width: 900px) {
-  .round__grid {
-    grid-template-areas:
-      "cover cards"
-      "cover lyrics";
-    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
-    gap: var(--gap-lg);
-    align-items: start;
-  }
-  .round__col--left {
-    grid-area: cover;
-  }
-  .round__col--right {
-    grid-area: cards;
-  }
-  .round__lyrics {
-    grid-area: lyrics;
-  }
-}
-
-/* Challenge cards reflow into their own columns as width allows. */
-@media (min-width: 1280px) {
-  .round__col--right {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: var(--gap-lg);
-    align-content: start;
-  }
-}
-
-/* Grow the cover column on very wide screens. */
-@media (min-width: 1500px) {
-  .round__grid {
-    grid-template-columns: minmax(460px, 560px) minmax(0, 1fr);
-  }
-}
-
-/* Sticky cover only on tall + wide viewports so it stays in view while
-   scrolling the lyrics; never sticky on short windows. */
-@media (min-width: 1100px) and (min-height: 760px) {
-  .round__col--left {
-    position: sticky;
-    top: var(--gap-lg);
-    align-self: start;
-  }
-}
-
-.cover-block {
-  max-width: 620px;
-}
-
-.round__col {
   display: flex;
   flex-direction: column;
   gap: var(--gap-lg);
+  /* The view root is not a flex stack, so the first card would otherwise butt
+     straight into the sticky bar's hairline. */
+  margin-top: var(--gap-lg);
+}
+
+/* The three non-lyrics sections are grid children like everything else, so the
+   narrow-viewport `order` rules below can interleave them with the clues. */
+.round__col--right {
+  display: contents;
+}
+
+/* Clue strip: the cover and the clip sit side by side instead of stacking into
+   a two-screen wall. Both stay above the first challenge on a wide screen. */
+@media (min-width: 720px) {
+  .round__col--left {
+    display: grid;
+    /* 220px cover + the card's own 24px padding on each side, so the art fills
+       its card exactly instead of floating in it, and the two clue cards end up
+       close enough in height to read as one band. */
+    grid-template-columns: minmax(0, 268px) minmax(0, 1fr);
+    gap: var(--gap-lg);
+    align-items: start;
+  }
+
+
+  /* Without Premium the clip is a one-line notice. It fills its half of the
+     strip (the `muted-note` 52ch cap would otherwise stop it short of the
+     cover's right edge) and keeps its natural height. */
+  .round__col--left > .round__audio-note {
+    max-width: none;
+    padding: var(--gap);
+  }
+}
+
+/* Phones and small tablets: the clue strip dissolves and each clue is placed
+   immediately above the challenge it feeds, so "La canción" is the second
+   thing on the page instead of the fourth screen. */
+@media (max-width: 719px) {
+  .round__col--left {
+    display: contents;
+  }
+
+  .clip-card,
+  .round__audio-note {
+    order: 1;
+  }
+
+  .round-sec--song {
+    order: 2;
+  }
+
+  .cover-block {
+    order: 3;
+  }
+
+  .round-sec--album {
+    order: 4;
+  }
+
+  .round-sec--year {
+    order: 5;
+  }
+
+  .round-sec--lyrics {
+    order: 6;
+  }
 }
 
 .card__head {
@@ -2207,6 +2268,26 @@ button {
   list-style: none;
   user-select: none;
   transition: background 160ms var(--ease-out);
+  /* Title, state chip and chevron share one line at every width. */
+  flex-wrap: nowrap;
+}
+
+/* A collapsed row is a menu entry. It used to run at `display--md` (2.1rem),
+   which made every section label larger than the round's own heading; a strong
+   UI label puts the hierarchy back the right way up. */
+.round-sec__title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.0625rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+/* The state chip ("Temas: 0/6", "Adivinado") must never wrap into two lines and
+   shove the title around. */
+.round-sec__head > .chip {
+  flex: none;
+  white-space: nowrap;
 }
 
 /* Both spellings of "drop the native disclosure triangle". */
@@ -2259,6 +2340,18 @@ button {
   padding: 0 var(--gap-lg) var(--gap-lg);
 }
 
+/* Reading measure. A section card is as wide as the page, but a song title is
+   not 1000px of text: the single-answer fields stop at a normal field width.
+   The tracklist rows opt out (they are already inside their own grid column)
+   and so does the lyrics word grid, which needs every pixel it can get. */
+.round-sec__body .guess {
+  max-width: 34rem;
+}
+
+.album-track .guess {
+  max-width: none;
+}
+
 /* Shared cover — THE only album image on screen */
 .cover-block {
   display: flex;
@@ -2298,11 +2391,15 @@ button {
   color: #101512;
 }
 
+/* The cover is a clue, not a poster: capped so it never claims a whole phone
+   screen before the first challenge. */
 .cover-stage {
   border-radius: var(--radius-cover);
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--surface-2);
+  width: 100%;
+  max-width: 220px;
 }
 
 .cover-canvas {
@@ -2383,6 +2480,33 @@ button {
 .clip-card__hint {
   color: var(--text-dim);
   font-size: 0.8125rem;
+  max-width: 52ch;
+}
+
+/* The clip is the first thing on a phone, so it has to stay short: smaller
+   buttons, one readout line, a hint that does not run to four lines. */
+@media (max-width: 719px) {
+  .clip-card {
+    gap: 12px;
+  }
+
+  .clip-card .clip__label {
+    font-size: 1.3rem;
+  }
+
+  .clip-card .clip__actions {
+    gap: 8px;
+  }
+
+  .clip-card .clip__actions .btn {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+  }
+
+  .clip-card__hint {
+    font-size: 0.75rem;
+  }
 }
 
 .round__footer {
@@ -2441,12 +2565,18 @@ button {
    boxes. Separation now comes from whitespace and the tabular track number;
    the only tinted row is the one being typed in, which is the one that needs
    to stand out. */
+/* The preview controls used to be a third column, which made every row as wide
+   as its buttons and let a two-artist row drag its neighbour out of line. They
+   now sit under the inputs, so the guess field is the row's primary element at
+   every width and rows align on their first line. */
 .album-track {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
-  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px 10px;
   align-items: start;
-  padding: 4px 8px;
+  /* A short row must not stretch to the height of the tall one beside it. */
+  align-self: start;
+  padding: 6px 8px;
   border-radius: var(--radius-input);
   transition: background 160ms var(--ease-out);
 }
@@ -2479,52 +2609,69 @@ button {
   gap: 6px;
 }
 
-/* Per-track start/end previews (Premium): play + «+seconds» per edge, one edge
-   per line, with its own doubling ladder (same rule as the round's clip bar). */
+/* Fill the row instead of sizing to the placeholder: a one-artist row and a
+   two-artist row then share the same left and right edges. */
+.album-track__artists > .guess {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+/* Per-track start/end previews (Premium): play + «+seconds» per edge, each edge
+   its own pair, with its own doubling ladder (same rule as the round's clip
+   bar). Four buttons per row is a lot of ink for a secondary control, so they
+   read as tertiary: borderless, dimmed, small, and grouped into two pairs that
+   only separate under the row instead of competing with the input. */
 .album-track__audio {
+  grid-column: 2;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }
 
 .album-track__audio-line {
   display: flex;
-  gap: 6px;
-  justify-content: flex-end;
+  gap: 4px;
 }
 
 .album-track__audio .btn {
-  min-height: 30px;
-  padding: 0 9px;
-  font-size: 0.78rem;
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--text-dim);
 }
 
-/* Narrow screens: the controls flow under the row inputs instead of squeezing
-   them into a third column. */
-@media (max-width: 559px) {
-  .album-track {
-    grid-template-columns: 28px 1fr;
-  }
+.album-track__audio .btn:hover:not(:disabled) {
+  border-color: var(--line);
+  color: var(--text);
+}
 
-  .album-track__audio {
-    grid-column: 2;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
+/* The row being typed in gets its controls back at full strength. */
+.album-track:focus-within .album-track__audio .btn:not(:disabled) {
+  color: var(--text);
 }
 
 /* --------------------------------------------------------------------------
    Lyrics stage
    -------------------------------------------------------------------------- */
 
+/* Sized to its content: a seven-line song used to sit as a small cluster in a
+   1000x250 panel. `fit-content` keeps the frame on the words, and the extra
+   padding gives them room without inventing a bigger box. */
 .lyrics {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: fit-content;
+  min-width: min(100%, 280px);
+  max-width: 100%;
+  align-self: flex-start;
   max-height: 46vh;
   overflow: auto;
-  padding: var(--gap);
+  padding: var(--gap-lg);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);

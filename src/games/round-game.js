@@ -31,7 +31,7 @@ const COVER_PX = 512; // canvas backing resolution (sharp at the widest cover)
 const DIRECTION_COPY = { newer: "Más nuevo", older: "Más viejo", equal: "¡Correcto!" };
 const CLOSENESS_COPY = { "very-close": "Muy cerca", close: "Cerca", far: "Lejos" };
 
-const CARD_TITLES = { song: "La canción", album: "El álbum y los artistas", year: "¿De qué año?", lyrics: "La letra" };
+const CARD_TITLES = { song: "La canción", album: "El álbum", year: "¿De qué año?", lyrics: "La letra" };
 
 let handle = null;
 
@@ -98,6 +98,9 @@ function drawRound(view, live) {
   handle.cardReveal = {};
   handle.cardState = {};
   handle.cardEls = {};
+  // Sections that removed themselves after their data arrived (see dropCard).
+  // They must leave the progress denominator with everything else.
+  handle.droppedCards = new Set();
 
   const track = handle.ctx.library.getRandomTrack();
   handle.round = {
@@ -125,12 +128,28 @@ function artistKeyOf(a) {
   return typeof a === "string" ? a : (a?.id ?? a?.name ?? null);
 }
 
+/**
+ * Subscribe to solved song/album names. Returns an unsubscribe function: a
+ * section that removes itself has to stop reacting, or it keeps writing into
+ * detached inputs every time another card solves something.
+ */
 function onTitle(fn) {
-  handle.round.bus.titleSubs.push(fn);
+  const subs = handle.round.bus.titleSubs;
+  subs.push(fn);
+  return () => {
+    const i = subs.indexOf(fn);
+    if (i !== -1) subs.splice(i, 1);
+  };
 }
 
+/** Same contract as onTitle, for credited artists. */
 function onArtist(fn) {
-  handle.round.bus.artistSubs.push(fn);
+  const subs = handle.round.bus.artistSubs;
+  subs.push(fn);
+  return () => {
+    const i = subs.indexOf(fn);
+    if (i !== -1) subs.splice(i, 1);
+  };
 }
 
 /**
@@ -169,16 +188,9 @@ function renderHeader() {
   const segments = ui.el("div", { class: "round__segments", "aria-hidden": "true" });
   handle.progressSegments = segments;
   const actions = ui.el("div", { class: "round__actions" },
-    ui.el("button", {
-      class: "btn btn--primary",
-      text: "Otra canción",
-      on: { click: () => drawRound(handle.view, handle.live) },
-    }),
-    ui.el("button", {
-      class: "btn btn--ghost",
-      text: "Ver respuestas",
-      on: { click: () => revealAll() },
-    }),
+    barButton("btn btn--primary", "Otra canción", "Otra", () =>
+      drawRound(handle.view, handle.live)),
+    barButton("btn btn--ghost", "Ver respuestas", "Respuestas", () => revealAll()),
   );
   return ui.el("div", { class: "round__bar" },
     ui.el("div", { class: "round__header" },
@@ -189,11 +201,31 @@ function renderHeader() {
   );
 }
 
+// Sticky-bar button with two visible labels, one per breakpoint, so the bar
+// stays a single line on a phone. `aria-label` carries the full wording, which
+// also stops a screen reader from announcing both spans.
+function barButton(cls, full, short, onClick) {
+  return ui.el("button", {
+    class: cls,
+    "aria-label": full,
+    title: full,
+    on: { click: onClick },
+  },
+    ui.el("span", { class: "round__act-full", text: full }),
+    ui.el("span", { class: "round__act-short", text: short }),
+  );
+}
+
 // Playable cards only (the Premium-gated ones leave the denominator when the
 // player is not Premium). Segments mirror the same states as the chips:
 // solved = accent, hinted/revealed = dimmed accent, pending = empty.
 function playableCardIds() {
-  return handle.ctx.player.isPremium() ? ["song", "album", "year", "lyrics"] : ["album", "lyrics"];
+  const ids = handle.ctx.player.isPremium()
+    ? ["song", "album", "year", "lyrics"]
+    : ["album", "lyrics"];
+  // A section that removed itself is not a challenge: it must not count in the
+  // chip's denominator nor leave a phantom segment in the strip.
+  return ids.filter((id) => !handle.droppedCards.has(id));
 }
 
 function isCardDone(state) {
@@ -205,6 +237,15 @@ function updateProgress() {
   const ids = playableCardIds();
   const done = ids.filter((id) => isCardDone(handle.cardState[id])).length;
   handle.progressChip.textContent = `${done}/${ids.length} resueltos`;
+  // Without the album card nothing reveals the cover on its own. A free account
+  // has no song card either, so a fully settled round reveals it here. A round
+  // that still has its album card reached this with the cover already open.
+  if (
+    ids.length > 0 && done === ids.length &&
+    !handle.cardEls.album && handle.round?.cover?.step !== LAST_STEP
+  ) {
+    revealCoverFull();
+  }
   if (handle.progressSegments) {
     handle.progressSegments.replaceChildren(...ids.map((id) => {
         const state = handle.cardState[id];
@@ -212,6 +253,45 @@ function updateProgress() {
         return ui.el("span", { class: `round__seg${mod ? ` ${mod}` : ""}` });
       }));
   }
+}
+
+/**
+ * Remove a challenge section from the round for good. The DOM node is only half
+ * the job: the round tracks each section in five places, and a detached node
+ * left in any of them makes revealAll() and updateProgress() operate on
+ * something that is not on screen.
+ */
+function dropCard(id, { auto, unsubs } = {}) {
+  if (handle.droppedCards.has(id)) return;
+  handle.droppedCards.add(id);
+
+  handle.cardEls[id]?.remove();
+  delete handle.cardEls[id];
+  delete handle.cardChips[id];
+  delete handle.cardReveal[id];
+  delete handle.cardState[id];
+
+  // Pending debounce timers would fire against inputs that are gone.
+  if (auto) {
+    auto.clearAll();
+    handle.autos = handle.autos.filter((a) => a !== auto);
+  }
+  for (const off of unsubs ?? []) off();
+
+  // The album card is what reveals the cover on a solve. If the song was
+  // already settled before this section went away, nobody else would.
+  if (id === "album" && isCardDone(handle.cardState.song)) revealCoverFull();
+
+  updateProgress();
+}
+
+/**
+ * The cover is the album's clue, so the album card owns revealing it. When that
+ * section is not on screen, the song card inherits the job: identifying the
+ * track is the same "you earned it" moment for a single-track album.
+ */
+function revealCoverWhenAlbumAbsent() {
+  if (!handle.cardEls.album) revealCoverFull();
 }
 
 function setCardState(id, state) {
@@ -603,11 +683,15 @@ function makeCard(id) {
   const chip = ui.el("span", { class: "chip chip--muted", hidden: true });
   handle.cardChips[id] = chip;
   const head = ui.el("summary", { class: "card__head round-sec__head" },
-    ui.el("h2", { class: "display display--md", text: CARD_TITLES[id] }),
+    // A collapsed row is a menu entry, not a page title: it must read as a
+    // strong UI label, below the round's own heading in the type scale.
+    ui.el("h2", { class: "round-sec__title", text: CARD_TITLES[id] }),
     chip,
   );
   const body = ui.el("div", { class: "stack round-sec__body" });
-  const cardEl = ui.el("details", { class: "card round-sec" }, head, body);
+  // The per-id modifier is what lets the stylesheet reorder the sections
+  // against the clue blocks on narrow viewports.
+  const cardEl = ui.el("details", { class: `card round-sec round-sec--${id}` }, head, body);
   cardEl.open = defaultCardOpen(id);
   handle.cardEls[id] = cardEl;
   return { cardEl, body };
@@ -642,6 +726,7 @@ function renderSongCard(track, premium) {
     if (st.titleSolved && st.artistsSolved) {
       solvedBanner.hidden = false;
       announce("Canción y artistas correctos");
+      revealCoverWhenAlbumAbsent();
       setCardState(id, "solved");
     }
   };
@@ -761,6 +846,7 @@ function renderSongCard(track, premium) {
     });
     solvedBanner.hidden = false;
     bannerText.textContent = "Canción revelada.";
+    revealCoverWhenAlbumAbsent();
     setCardState(id, "revealed");
     publishTitle(track.name);
     artists.forEach((artist) => publishArtist(artist));
@@ -830,6 +916,10 @@ function renderAlbumCard(track, premium) {
   };
   const auto = createAutoGuess();
   handle.autos.push(auto);
+  // Filled by the bus subscriptions at the bottom of this function. The drop
+  // path needs them: a removed section must stop reacting to names and artists
+  // solved in the cards that are still on screen.
+  const unsubs = [];
 
   // Artists solved anywhere in this card (album-level slots or a track row) are
   // known for the whole album: the owner is credited on every track, so typing
@@ -845,8 +935,8 @@ function renderAlbumCard(track, premium) {
     tracks: null,
     tracklistLoaded: false,
     loadError: false,
-    // A single-track album has no tracklist game to play: guessing the album
-    // name IS guessing the song. The whole section is hidden in that case.
+    // A single-track album has nothing this section can ask that the song card
+    // does not already cover, so the whole section removes itself in that case.
     singleTrack: false,
     rowState: [],
     rowEls: [],
@@ -1033,13 +1123,14 @@ function renderAlbumCard(track, premium) {
     ac.tracks = tracks;
     ac.tracklistLoaded = true;
     ac.rowState = tracks.map(newRowState);
-    // A single-track album: guessing the album name already gave away the only
-    // song, so the whole tracklist game is noise. Hide it instead of showing a
-    // one-row grid and a "Temas: 0/1" chip.
+    // A single-track album: the track normally shares the album's name, so
+    // solving the song already covers this whole section. The count is only
+    // known now, after the fetch, so the card renders first and then removes
+    // itself. Nothing below this point applies to a section that is gone.
     if (tracks.length <= 1) {
       ac.singleTrack = true;
-      freeBlock.hidden = true;
-      tracklistChip.hidden = true;
+      dropCard(id, { auto, unsubs });
+      return;
     }
     // Names solved while this was loading never saw these rows. The bus set
     // holds NORMALIZED names, so replay the raw ones kept alongside it.
@@ -1478,15 +1569,15 @@ function renderAlbumCard(track, premium) {
 
   // --- bus subscriptions -----------------------------------------------------
 
-  onTitle((name) => {
+  unsubs.push(onTitle((name) => {
     if (!st.albumCorrect && match.matchAlbum(name, album.name)) {
       lockAlbum(album.name);
       announce(`Álbum correcto: ${album.name}`);
     }
     applyTitleToRows(name);
-  });
+  }));
 
-  onArtist((a) => {
+  unsubs.push(onArtist((a) => {
     const key = artistKeyOf(a);
     if (key == null) return;
     if (!knownArtists.has(key)) {
@@ -1504,7 +1595,7 @@ function renderAlbumCard(track, premium) {
     slotGroups[j].classList.add("guess--correct");
     st.artistSolved = slotInputs.every((i) => i.disabled);
     checkSolved();
-  });
+  }));
 
   body.append(
     ui.el("p", { class: "guess-panel__title", text: "Adivina el álbum" }),
