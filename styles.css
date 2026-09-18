@@ -351,6 +351,13 @@ button {
   opacity: 0.8;
 }
 
+/* A four-digit year is not a song title: size the field to what it holds. Both
+   the round's year section and the standalone year game build this same input,
+   so keying off the shared markup keeps the two screens in agreement. */
+.guess__input[type="number"] {
+  max-width: 10rem;
+}
+
 .guess__input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -2281,6 +2288,70 @@ button {
   }
 }
 
+/* Wide screens: use the width the app already gives this view. main.js wraps
+   the round in `.container--wide` (1720px), and a single 920px column threw
+   ~800px of that away.
+   The canyon this replaced came from pairing a FIXED-height cover column with
+   a VARIABLE-height stack of collapsibles. Neither column here is fixed: the
+   clue strip is out of the columns entirely (full width, its own row), and the
+   only side-by-side pair is the two SHORT sections, which track each other's
+   height. The two tall sections span both columns, so they cannot be the short
+   side of anything. */
+@media (min-width: 1100px) {
+  /* The `.container--wide` cap takes over as the page measure. */
+  .round__bar > .round__header,
+  .round__grid,
+  .round__footer {
+    max-width: none;
+  }
+
+  .round__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap-lg);
+    align-items: start;
+  }
+
+  .round__col--left,
+  .round-sec--album,
+  .round-sec--lyrics {
+    grid-column: 1 / -1;
+  }
+
+  /* The two short challenges pair up; both are a label and one or two fields,
+     so the row stays balanced whether they are open or closed. */
+  .round-sec--song {
+    grid-column: 1;
+  }
+
+  .round-sec--year {
+    grid-column: 2;
+  }
+
+  /* There is room for the art now. Every pixel the cover grows is a pixel of
+     background beside the shorter clip card, so it grows to a clue-sized 292px
+     and no further. */
+  .round__col--left {
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  }
+
+  .round__col--left .cover-stage {
+    max-width: none;
+  }
+
+  /* A square cover's height scales with its width; the clip card's does not, so
+     the cover card is simply the taller of the two and the strip has a ragged
+     bottom edge. That is ordinary. Stretching the clip card to match only moved
+     the empty space inside it, which reads as an unfinished card. */
+
+  /* The bar wants the whole width (it IS the clip), but "CLIP ... 0,1 s" pushed
+     to opposite edges of a 1300px card reads as two unrelated things. */
+  .round__col--left > .clip-card > .clip-card__head {
+    max-width: 42rem;
+  }
+
+}
+
 /* Phones and small tablets: the clue strip dissolves and each clue is placed
    immediately above the challenge it feeds, so "La canción" is the second
    thing on the page instead of the fourth screen. */
@@ -2298,15 +2369,16 @@ button {
     order: 2;
   }
 
-  .cover-block {
+  .round-sec--year {
     order: 3;
   }
 
-  .round-sec--album {
+  /* The cover stays glued to the album card: it is that card's clue. */
+  .cover-block {
     order: 4;
   }
 
-  .round-sec--year {
+  .round-sec--album {
     order: 5;
   }
 
@@ -2421,6 +2493,14 @@ button {
    and so does the lyrics word grid, which needs every pixel it can get. */
 .round-sec__body .guess {
   max-width: 34rem;
+}
+
+/* Columns are narrower than the page on the two-column stage, so a field can
+   breathe a little without ever approaching the full 1720px. */
+@media (min-width: 1100px) {
+  .round-sec__body .guess {
+    max-width: 38rem;
+  }
 }
 
 .album-track .guess {
@@ -2613,14 +2693,6 @@ button {
    Album tracklist guessing game (Round mode) — album card spans the full
    width of the challenge-cards grid; rows reflow into columns on wide screens.
    -------------------------------------------------------------------------- */
-
-/* The album card is the tallest: once the right column is a multi-column grid
-   it spans every column so its internal layout stays wide. */
-@media (min-width: 1280px) {
-  .round__col--right .album-card {
-    grid-column: 1 / -1;
-  }
-}
 
 .album-tracks {
   display: grid;

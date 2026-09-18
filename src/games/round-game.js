@@ -323,10 +323,15 @@ function buildLayout(track) {
     renderCoverBlock(track),
     renderAudioBar(track),
   );
+  // Order matters: on a wide screen the two short sections share a grid row and
+  // the two tall ones span both columns. Sparse grid placement never moves its
+  // cursor backwards, so the album card sitting between them would push the
+  // year card down into a row of its own. Fixing the DOM order instead of using
+  // `grid-auto-flow: dense` keeps the focus order equal to the visual order.
   const right = ui.el("div", { class: "round__col round__col--right" },
     renderSongCard(track, premium),
-    renderAlbumCard(track, premium),
     renderYearCard(track, premium),
+    renderAlbumCard(track, premium),
   );
   const lyrics = renderLyricsCard(track);
   lyrics.classList.add("round__lyrics");
@@ -654,6 +659,10 @@ function clipBlock(track, st) {
 
   syncClip();
 
+  // Volume lives with the audio, not on the hub: changing it used to cost a
+  // trip out of the round. Same factory the hub uses, same shared state value.
+  // Only reachable when Premium, since the non-Premium path returns the notice
+  // before ever building this card.
   return ui.el("div", { class: "card clip-card" },
     ui.el("div", { class: "clip-card__head" },
       ui.el("span", { class: "clip-card__caption", text: "Clip" }),
@@ -661,6 +670,7 @@ function clipBlock(track, st) {
     ),
     ui.el("div", { class: "clip" }, bar),
     ui.el("div", { class: "clip__actions" }, playBtn, addBtn, skipBtn, resetBtn),
+    ui.volumeControl(handle.ctx),
     hint,
   );
 }

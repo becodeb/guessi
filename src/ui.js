@@ -150,3 +150,36 @@ export function premiumGate({ onBack }) {
       : null
   );
 }
+/**
+ * Spotify volume slider, shared by the hub and the round.
+ *
+ * Both call sites read and write the SAME `ctx.state.player.volume` (0-100), so
+ * the value follows the player across views with no syncing of its own: the
+ * next view to render simply reads the number that is already there.
+ *
+ * `ctx.player.setVolume` takes 0-1 and clamps; `isReady()` is false until the
+ * Web Playback SDK has a device, which is what disables the control.
+ */
+export function volumeControl(ctx) {
+  const playerState = ctx.state.player;
+  const readout = el("span", { class: "small dim", text: `${playerState.volume}%` });
+  const input = el("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    value: String(playerState.volume),
+    "aria-label": "Volumen",
+    disabled: !ctx.player.isReady(),
+    on: {
+      input: (e) => {
+        const v = Number(e.target.value);
+        playerState.volume = v;
+        ctx.player.setVolume(v / 100);
+        // The hub's original copy never did this, so the readout sat at its
+        // initial value while the slider moved.
+        readout.textContent = `${v}%`;
+      },
+    },
+  });
+  return el("div", { class: "volume" }, icon("volume"), input, readout);
+}

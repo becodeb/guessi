@@ -348,26 +348,8 @@ function renderHub(view) {
   view.append(ui.el("h1", { class: "display display--md", text: "Juegos" }));
 
   // Volume control (design component inventory; disabled when player off).
-  const volumeInput = ui.el("input", {
-    type: "range",
-    min: "0",
-    max: "100",
-    value: String(appState.player.volume),
-    "aria-label": "Volumen",
-    disabled: !player.isReady(),
-    on: {
-      input: (e) => {
-        const v = Number(e.target.value) / 100;
-        player.setVolume(v);
-        appState.player.volume = Number(e.target.value);
-      },
-    },
-  });
-  const volumeRow = ui.el("div", { class: "volume" },
-    ui.icon("volume"),
-    volumeInput,
-    ui.el("span", { class: "small dim", text: `${appState.player.volume}%` }),
-  );
+  // Shared with the round's clip card so the two cannot drift apart.
+  const volumeRow = ui.volumeControl(ctx);
 
   const grid = ui.el("div", { class: "hub-grid" },
     hubCard({
