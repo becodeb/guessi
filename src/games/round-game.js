@@ -1,7 +1,7 @@
-// Round game — the merged mode: one random track, ALL FOUR challenges alive on a
-// single screen at once (no stages, no forced order). A single shared, obscured
-// album cover sits at the top; a single shared audio bar powers both the song
-// and the year challenges; four independent cards track their own progress.
+// Round game — the merged mode: one random track, every challenge alive on a
+// single screen at once (no stages, no forced order). A single shared clue card
+// holds the obscured album cover and the audio clip; the challenge sections
+// below it track their own progress independently.
 //
 // Cleanup contract (design "Cleanup"): unmount() stops audio, clears every
 // createAutoGuess timer, aborts the lyrics fetch, and drops the round so no
@@ -28,10 +28,7 @@ const PIXEL_STEPS = [64, 44, 30, 20, 12, 6, 1]; // "Pixeles" — block size, rat
 const LAST_STEP = BLUR_STEPS.length - 1;
 const COVER_PX = 512; // canvas backing resolution (sharp at the widest cover)
 
-const DIRECTION_COPY = { newer: "Más nuevo", older: "Más viejo", equal: "¡Correcto!" };
-const CLOSENESS_COPY = { "very-close": "Muy cerca", close: "Cerca", far: "Lejos" };
-
-const CARD_TITLES = { song: "La canción", album: "El álbum", year: "¿De qué año?", lyrics: "La letra" };
+const CARD_TITLES = { song: "La canción", album: "El álbum", lyrics: "La letra" };
 
 let handle = null;
 
@@ -221,7 +218,7 @@ function barButton(cls, full, short, onClick) {
 // solved = accent, hinted/revealed = dimmed accent, pending = empty.
 function playableCardIds() {
   const ids = handle.ctx.player.isPremium()
-    ? ["song", "album", "year", "lyrics"]
+    ? ["song", "album", "lyrics"]
     : ["album", "lyrics"];
   // A section that removed itself is not a challenge: it must not count in the
   // chip's denominator nor leave a phantom segment in the strip.
@@ -323,14 +320,8 @@ function buildLayout(track) {
     renderCoverBlock(track),
     renderAudioBar(track),
   );
-  // Order matters: on a wide screen the two short sections share a grid row and
-  // the two tall ones span both columns. Sparse grid placement never moves its
-  // cursor backwards, so the album card sitting between them would push the
-  // year card down into a row of its own. Fixing the DOM order instead of using
-  // `grid-auto-flow: dense` keeps the focus order equal to the visual order.
   const right = ui.el("div", { class: "round__col round__col--right" },
     renderSongCard(track, premium),
-    renderYearCard(track, premium),
     renderAlbumCard(track, premium),
   );
   const lyrics = renderLyricsCard(track);
@@ -401,7 +392,13 @@ function renderCoverBlock(track) {
   const hint = ui.el("p", { class: "cover-hint", text: `Clics restantes: ${LAST_STEP}` });
   c.hintEl = hint;
 
-  return ui.el("div", { class: "cover-block" }, modes, stage, hint);
+  // The art and its "Clics restantes" counter travel together: on a wide screen
+  // the clue card lifts the mode buttons into the column beside the art, and the
+  // counter has to stay glued underneath it.
+  return ui.el("div", { class: "cover-block" },
+    modes,
+    ui.el("div", { class: "cover-art" }, stage, hint),
+  );
 }
 
 function modeButton(mode, label, c) {
@@ -501,7 +498,7 @@ function revealCoverFull() {
   if (c.canvas) c.canvas.setAttribute("aria-label", "Portada del álbum revelada");
 }
 
-// --- shared audio bar (single player for song + year) ------------------------
+// --- shared audio bar (the round's single player) ----------------------------
 
 function renderAudioBar(track) {
   if (!handle.ctx.player.isPremium()) {
@@ -889,18 +886,21 @@ function renderSongCard(track, premium) {
     checkSolved();
   });
 
-  const children = [
-    ui.el("p", { class: "guess-panel__title", text: "Adivina el título" }),
-    group,
-  ];
-  if (artists.length > 0) {
-    children.push(
-      ui.el("p", { class: "guess-panel__title", text: "Adivina los artistas" }),
-      ...slotGroups,
-    );
-  }
-  children.push(solvedBanner);
-  body.append(...children);
+  body.append(
+    ui.el("div", { class: "round-fields" },
+      ui.el("div", { class: "round-field" },
+        ui.el("p", { class: "guess-panel__title", text: "Adivina el título" }),
+        group,
+      ),
+      artists.length > 0
+        ? ui.el("div", { class: "round-field" },
+            ui.el("p", { class: "guess-panel__title", text: "Adivina los artistas" }),
+            ...slotGroups,
+          )
+        : null,
+    ),
+    solvedBanner,
+  );
   return cardEl;
 }
 
@@ -1077,7 +1077,9 @@ function renderAlbumCard(track, premium) {
     text: "Escribí cualquier tema del álbum, sin importar el orden",
   });
   // One container so a single-track album can hide the whole tracklist game.
-  const freeBlock = ui.el("div", { class: "stack" },
+  // It joins the other two fields in the grid, so a wide card lays all three
+  // out in a row instead of leaving the free-order field alone on its own line.
+  const freeBlock = ui.el("div", { class: "round-field" },
     ui.el("p", { class: "guess-panel__title", text: "O en cualquier orden" }),
     freeGroup,
     freeNote,
@@ -1608,108 +1610,24 @@ function renderAlbumCard(track, premium) {
   }));
 
   body.append(
-    ui.el("p", { class: "guess-panel__title", text: "Adivina el álbum" }),
-    albumGroup,
-    ...((album.artists?.length ?? 0) > 0
-      ? [ui.el("p", { class: "guess-panel__title", text: "Adivina el artista" }), ...slotGroups]
-      : []),
+    ui.el("div", { class: "round-fields" },
+      ui.el("div", { class: "round-field" },
+        ui.el("p", { class: "guess-panel__title", text: "Adivina el álbum" }),
+        albumGroup,
+      ),
+      (album.artists?.length ?? 0) > 0
+        ? ui.el("div", { class: "round-field" },
+            ui.el("p", { class: "guess-panel__title", text: "Adivina el artista" }),
+            ...slotGroups,
+          )
+        : null,
+      freeBlock,
+    ),
     solvedBanner,
-    freeBlock,
     tracklistBox,
   );
 
   loadAlbumTracklist();
-  return cardEl;
-}
-
-// --- card: ¿De qué año? (Premium) -------------------------------------------
-
-function yearOf(track) {
-  const raw = track.album?.release_date ?? "";
-  const year = Number.parseInt(raw.slice(0, 4), 10);
-  return Number.isNaN(year) ? null : year;
-}
-
-function renderYearCard(track, premium) {
-  const id = "year";
-  const { cardEl, body } = makeCard(id);
-  if (!premium) {
-    body.append(ui.el("p", { class: "muted-note", text: "Requiere Spotify Premium." }));
-    const chip = handle.cardChips[id];
-    chip.hidden = false;
-    chip.textContent = "Requiere Premium";
-    chip.className = "chip chip--muted";
-    return cardEl;
-  }
-
-  const year = yearOf(track);
-  if (year == null) {
-    body.append(ui.el("p", { class: "muted-note", text: "Esta canción no tiene año de lanzamiento registrado." }));
-    handle.cardReveal[id] = () => setCardState(id, "revealed");
-    return cardEl;
-  }
-
-  const auto = createAutoGuess();
-  handle.autos.push(auto);
-  const st = { year, solved: false };
-
-  const bannerText = ui.el("span", { text: `¡Correcto! El año es ${year}.` });
-  const solvedBanner = ui.el("div", { class: "solved-banner", hidden: true },
-    ui.icon("check"), bannerText);
-  const hintArrow = ui.el("span", { class: "hint-arrow" });
-  const hintClose = ui.el("span", { class: "muted-note" });
-  const hintRow = ui.el("div", { class: "hint-row", hidden: true }, hintArrow, hintClose);
-
-  const input = ui.el("input", {
-    class: "guess__input", type: "number", inputmode: "numeric", min: "1950", max: "2035",
-    placeholder: "Año", "aria-label": "Adivina el año", disabled: st.solved,
-  });
-  const group = ui.el("div", { class: "guess" }, input);
-
-  const evaluate = () => {
-    const digits = input.value.replace(/\D/g, "");
-    if (st.solved || digits.length !== 4) return;
-    const guess = Number.parseInt(digits, 10);
-    const hint = match.yearHint(guess, year);
-    hintRow.hidden = false;
-    if (hint.direction === "equal") {
-      hintArrow.textContent = "¡Correcto!";
-      hintClose.textContent = "";
-      st.solved = true;
-      input.disabled = true;
-      solvedBanner.hidden = false;
-      // No artist/album here: the year card must never spoil the other cards.
-      announce(`¡Correcto! El año es ${year}`);
-      setCardState(id, "solved");
-    } else {
-      hintArrow.textContent = DIRECTION_COPY[hint.direction];
-      hintClose.textContent = CLOSENESS_COPY[hint.closeness];
-      announce(`${DIRECTION_COPY[hint.direction]}, ${CLOSENESS_COPY[hint.closeness]}`);
-    }
-  };
-  input.addEventListener("input", () => { hintRow.hidden = true; });
-  const shouldInstant = () => {
-    const digits = input.value.replace(/\D/g, "");
-    return digits.length === 4 && Number.parseInt(digits, 10) === year;
-  };
-  auto.bind(group, input, shouldInstant, evaluate);
-
-  handle.cardReveal[id] = () => {
-    st.solved = true;
-    input.disabled = true;
-    input.value = String(year);
-    hintRow.hidden = true;
-    bannerText.textContent = `El año es ${year}.`;
-    solvedBanner.hidden = false;
-    setCardState(id, "revealed");
-  };
-
-  body.append(
-    ui.el("p", { class: "guess-panel__title", text: "Adivina el año" }),
-    group,
-    hintRow,
-    solvedBanner,
-  );
   return cardEl;
 }
 
@@ -1991,7 +1909,7 @@ function renderFooter() {
 
 function revealAll() {
   revealCoverFull();
-  for (const id of ["song", "album", "year", "lyrics"]) {
+  for (const id of ["song", "album", "lyrics"]) {
     // Revealed answers behind a collapsed section are not an answer: open it.
     const cardEl = handle.cardEls[id];
     if (cardEl) cardEl.open = true;

@@ -2312,37 +2312,72 @@ button {
     align-items: start;
   }
 
+  /* Every section runs the full width. Two sections side by side only balance
+     while both hold the same kind of content, and the width is better spent
+     inside each card (see `.round-fields`) than on pairing a short form with a
+     tall one. */
   .round__col--left,
-  .round-sec--album,
-  .round-sec--lyrics {
+  .round-sec {
     grid-column: 1 / -1;
   }
 
-  /* The two short challenges pair up; both are a label and one or two fields,
-     so the row stays balanced whether they are open or closed. */
-  .round-sec--song {
-    grid-column: 1;
-  }
-
-  .round-sec--year {
-    grid-column: 2;
-  }
-
-  /* There is room for the art now. Every pixel the cover grows is a pixel of
-     background beside the shorter clip card, so it grows to a clue-sized 292px
-     and no further. */
+  /* ONE clue card instead of two cards of different heights with a ragged edge
+     between them. The art sits on the left with its click counter; the mode
+     buttons move up into the right-hand column so the controls column carries
+     enough to match the art's height. */
   .round__col--left {
-    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: var(--gap-lg);
+    grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+    grid-template-areas:
+      "art modes"
+      "art clip";
+    grid-template-rows: auto 1fr;
+    column-gap: var(--gap-lg);
+    row-gap: var(--gap);
+  }
+
+  /* Flattened so its children can take their own grid areas. */
+  .round__col--left > .cover-block {
+    display: contents;
+  }
+
+  .round__col--left .cover-art {
+    grid-area: art;
+  }
+
+  .round__col--left .cover-modes {
+    grid-area: modes;
+    align-self: start;
+    justify-self: start;
   }
 
   .round__col--left .cover-stage {
     max-width: none;
   }
 
-  /* A square cover's height scales with its width; the clip card's does not, so
-     the cover card is simply the taller of the two and the strip has a ragged
-     bottom edge. That is ordinary. Stretching the clip card to match only moved
-     the empty space inside it, which reads as an unfinished card. */
+  /* The two inner blocks are panels of the clue card now, not cards. */
+  .round__col--left > .clip-card,
+  .round__col--left > .round__audio-note {
+    grid-area: clip;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  /* Without Premium the controls column is a single line of text, so a
+     cover-sized art column would leave most of the card empty. The art steps
+     back and the notice sits on the controls' centre line. */
+  .round__col--left:has(> .round__audio-note) {
+    grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  }
+
+  .round__col--left > .round__audio-note {
+    align-self: center;
+  }
 
   /* The bar wants the whole width (it IS the clip), but "CLIP ... 0,1 s" pushed
      to opposite edges of a 1300px card reads as two unrelated things. */
@@ -2350,6 +2385,46 @@ button {
     max-width: 42rem;
   }
 
+  /* Lyrics: the word grid takes the free width and everything that reads or
+     writes against it (help, controls, hint, the word input) stacks in a column
+     beside it, instead of leaving the whole right half of the card empty. */
+  .round-sec--lyrics > .round-sec__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+    grid-template-rows: auto auto auto 1fr;
+    column-gap: var(--gap-xl);
+    row-gap: var(--gap);
+    align-items: start;
+  }
+
+  .round-sec--lyrics .lyrics {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    width: auto;
+    max-width: none;
+    max-height: none;
+  }
+
+  .round-sec--lyrics .lyrics__help {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .round-sec--lyrics .lyrics__controls {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .round-sec--lyrics .lyrics__hintline {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .round-sec--lyrics > .round-sec__body > .guess {
+    grid-column: 2;
+    grid-row: 4;
+    align-self: start;
+  }
 }
 
 /* Phones and small tablets: the clue strip dissolves and each clue is placed
@@ -2369,21 +2444,17 @@ button {
     order: 2;
   }
 
-  .round-sec--year {
+  /* The cover stays glued to the album card: it is that card's clue. */
+  .cover-block {
     order: 3;
   }
 
-  /* The cover stays glued to the album card: it is that card's clue. */
-  .cover-block {
+  .round-sec--album {
     order: 4;
   }
 
-  .round-sec--album {
-    order: 5;
-  }
-
   .round-sec--lyrics {
-    order: 6;
+    order: 5;
   }
 }
 
@@ -2487,6 +2558,34 @@ button {
   padding: 0 var(--gap-lg) var(--gap-lg);
 }
 
+/* A label and the field(s) it names are one unit, so a wide card can lay them
+   out in columns. Stacked on a phone, side by side once there is room: that is
+   what fills the space beside a short field instead of stretching the field. */
+.round-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.round-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  /* auto-fit, not auto-fill: empty tracks collapse, so a card with two fields
+     gets two wide columns and one with three gets three, with no leftover
+     column of air either way. */
+  .round-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+    gap: var(--gap-lg);
+    align-items: start;
+  }
+}
+
 /* Reading measure. A section card is as wide as the page, but a song title is
    not 1000px of text: the single-answer fields stop at a normal field width.
    The tracklist rows opt out (they are already inside their own grid column)
@@ -2544,6 +2643,13 @@ button {
 .cover-mode[aria-pressed="true"] {
   background: var(--accent);
   color: #101512;
+}
+
+/* The art and its "Clics restantes" line move together. */
+.cover-art {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* The cover is a clue, not a poster: capped so it never claims a whole phone
