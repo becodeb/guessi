@@ -1624,9 +1624,18 @@ button {
   font-weight: 700;
 }
 
-/* The way out lives in Spotify, not here — give it its own weight. */
+/* The column layout would stretch a lone button across the whole card. */
+.blocked-card__anyway {
+  align-self: flex-start;
+}
+
+/* The way through — give it its own weight, it is the actionable part. */
 .blocked-card__how {
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
   border-radius: var(--radius-input);
   background: var(--surface);
   border: 1px solid var(--line);

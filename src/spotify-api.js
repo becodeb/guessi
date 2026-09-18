@@ -255,6 +255,11 @@ export async function searchCatalog(query, signal) {
   };
 }
 
+/** The signed-in user. Needed to tell «your playlist» from «Spotify's». */
+export function getMe() {
+  return request("/me");
+}
+
 export async function getPlaylist(id) {
   return request(`/playlists/${id}`);
 }

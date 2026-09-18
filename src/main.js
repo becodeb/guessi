@@ -457,6 +457,19 @@ let lastQuery = "";
 let ownPlaylists = null;
 let ownPlaylistsPromise = null;
 
+// The signed-in user, fetched once. The only way to answer "is this list
+// mine?" — Spotify's personalised lists (Top canciones, Descubrimiento
+// semanal) feel like yours but are owned by `spotify`.
+let me = null;
+
+function loadMe() {
+  if (me) return Promise.resolve(me);
+  return api.getMe().then((user) => {
+    me = user;
+    return user;
+  }).catch(() => null);
+}
+
 function loadOwnPlaylists() {
   if (ownPlaylists) return Promise.resolve(ownPlaylists);
   if (!ownPlaylistsPromise) {
@@ -810,7 +823,7 @@ function renderLibrary(view) {
         ui.toast(`${result.added} ${songWord(result.added)} en «Lo que sé».`, "success");
       }
     } catch (err) {
-      if (err?.name === "UnreadablePlaylistError") showBlockedPlaylist(err.playlist ?? { name: title });
+      if (err?.name === "UnreadablePlaylistError") showBlockedPlaylist(err.playlist ?? { name: title }, { id });
       else showError("No se pudo abrir esa lista. ", err);
     } finally {
       importing = false;
@@ -843,23 +856,74 @@ function renderLibrary(view) {
    * Naming the cause matters here: the app looks broken otherwise, and the
    * way out is a thing the user does in Spotify, not in this app.
    */
-  function blockedPlaylistCard(playlist) {
+  /**
+   * Whether a playlist belongs to someone other than the signed-in user —
+   * which, since February 2026, is the same as "its songs are off limits".
+   * With no identity to compare against, fall back to the prefix Spotify
+   * uses for its own algorithmic lists.
+   */
+  function isForeignPlaylist(playlist, ref) {
+    const owner = playlist?.owner?.id;
+    if (owner && me?.id) return owner !== me.id;
+    if (owner) return owner === "spotify";
+    return String(ref?.id ?? "").startsWith("37i9dQZ");
+  }
+
+  /**
+   * What to show when Spotify hands over a playlist's name but not its songs.
+   * It states who actually owns the list, because the personalised ones
+   * («Top canciones 20XX», Descubrimiento semanal) feel like the user's and
+   * are not — that mismatch is the whole confusion.
+   */
+  function blockedPlaylistCard(playlist, ref) {
+    const ownerName = playlist?.owner?.display_name;
+    const spotifyMade = (playlist?.owner?.id ?? "") === "spotify"
+      || String(ref?.id ?? playlist?.id ?? "").startsWith("37i9dQZ");
+
+    const ownerLine = playlist?.owner?.id
+      ? `La creó ${ownerName || playlist.owner.id}, no tu usuario. Spotify solo comparte las canciones de las listas que creaste tú.`
+      : "Spotify no devolvió ni siquiera los datos de esta lista, que es lo que hace con las suyas.";
+
+    const kids = [
+      ui.el("h3", { class: "blocked-card__title", text: "Spotify no comparte las canciones de esta lista" }),
+      playlist?.name ? ui.el("p", { class: "muted-note", text: `«${playlist.name}»` }) : null,
+      ui.el("p", { text: ownerLine }),
+      ui.el("p", { text: "Desde febrero de 2026 la API entrega solo el nombre y la portada de cualquier playlist ajena, y eso incluye las que Spotify arma para ti: «Top canciones 20XX», Descubrimiento semanal, «This Is…», las radios." }),
+    ];
+
+    if (spotifyMade) {
+      const topBtn = ui.el("button", { class: "btn btn--primary", type: "button" },
+        ui.icon("plus"), "Traer tus más escuchadas");
+      topBtn.addEventListener("click", (e) => importTopTracks("long_term", e.currentTarget));
+      kids.push(
+        ui.el("div", { class: "blocked-card__how" },
+          ui.el("p", { text: "Tu «Top canciones» sale de lo que más escuchaste, y ese cálculo sí está abierto. Es la misma música, por la puerta que Spotify deja:" }),
+          topBtn,
+        ),
+      );
+    }
+
+    kids.push(ui.el("p", { class: "muted-note", text: "La otra salida, si quieres esa lista exacta: ábrela en Spotify, selecciona todas las canciones, botón derecho → «Añadir a otra lista» → una playlist tuya. Esa pasa a ser tuya y se importa entera desde aquí." }));
+
+    // This verdict is read off the owner, not off a failed request: if
+    // Spotify turns out to hand the songs over anyway, let the user find out.
+    if (playlist?.id) {
+      kids.push(ui.el("button", {
+        class: "btn btn--sm btn--ghost blocked-card__anyway",
+        type: "button",
+        text: "Intentar igual",
+        on: { click: (e) => importSource("playlist", playlist, e.currentTarget) },
+      }));
+    }
+
     return ui.el("div", { class: "blocked-card" },
       coverEl(playlist?.images?.[0]?.url, "blocked-card__cover", "list"),
-      ui.el("div", { class: "blocked-card__body" },
-        ui.el("h3", { class: "blocked-card__title", text: "Spotify no comparte las canciones de esta lista" }),
-        playlist?.name
-          ? ui.el("p", { class: "muted-note", text: `«${playlist.name}»` })
-          : null,
-        ui.el("p", { text: "Las listas que arma Spotify —«This Is…», Descubrimiento semanal, las radios— y en general cualquier playlist que no sea tuya entregan solo el nombre y la portada. Es un límite de la API de Spotify, no de la app." }),
-        ui.el("p", { class: "blocked-card__how", text: "Para jugarla: ábrela en Spotify, selecciona todas las canciones, botón derecho → «Añadir a otra lista» → una playlist tuya. Esa la importas entera desde aquí." }),
-        ui.el("p", { class: "muted-note", text: "Si era tu «Top canciones» del año, usa «Tus más escuchadas» aquí arriba: son las mismas, calculadas por Spotify para ti." }),
-      ),
+      ui.el("div", { class: "blocked-card__body" }, ...kids),
     );
   }
 
-  function showBlockedPlaylist(playlist) {
-    errorHost.replaceChildren(blockedPlaylistCard(playlist));
+  function showBlockedPlaylist(playlist, ref) {
+    errorHost.replaceChildren(blockedPlaylistCard(playlist, ref));
   }
 
   // --- results rendering -----------------------------------------------------
@@ -945,7 +1009,7 @@ function renderLibrary(view) {
 
   function linkCard({ ref, item, blocked }) {
     const kind = ref.type;
-    if (kind === "playlist" && blocked) return blockedPlaylistCard(item);
+    if (kind === "playlist" && blocked) return blockedPlaylistCard(item, ref);
 
     let sub = "";
     if (kind === "track") sub = `${artistsText(item)} · ${item.album?.name ?? ""}`;
@@ -1158,9 +1222,13 @@ function renderLibrary(view) {
 
     try {
       if (link) {
-        const resolved = await library.resolveRef(link);
+        // Knowing who we are is what turns "Spotify · 100 canciones" into
+        // "this list is not yours", before the user clicks Importar.
+        const [resolved] = await Promise.all([library.resolveRef(link), loadMe()]);
         if (mine !== seq) return;
-        if (resolved?.blocked) results = { kind: "link", ref: link, item: resolved.item, blocked: true };
+        const foreign = link.type === "playlist"
+          && (resolved?.blocked || isForeignPlaylist(resolved?.item, link));
+        if (foreign) results = { kind: "link", ref: link, item: resolved?.item, blocked: true };
         else results = resolved?.item ? { kind: "link", ref: link, item: resolved.item } : { kind: "badlink" };
       } else if (badLink) {
         results = { kind: "badlink" };
@@ -1226,6 +1294,25 @@ function renderLibrary(view) {
   });
   clearBtn.addEventListener("click", clearSearch);
 
+  /**
+   * Most-played songs. Reached from the shortcut row and from the card that
+   * explains a withheld «Top canciones», which is the same music.
+   */
+  function importTopTracks(range, btn) {
+    if (!auth.hasScope("user-top-read")) {
+      showError("Para traer tus más escuchadas hace falta un permiso nuevo. Cierra sesión y vuelve a entrar: Spotify te lo pedirá una sola vez.", null, { retry: false });
+      return;
+    }
+    const label = TOP_RANGES.find(([value]) => value === range)?.[1] ?? "";
+    stageImport({
+      kind: "top",
+      id: `top:${range}`,
+      title: "Tus más escuchadas",
+      subtitle: `Lo que más sonó ${label}`,
+      load: () => library.previewTopTracks(range),
+    }, btn);
+  }
+
   const TOP_RANGES = [
     ["long_term", "de siempre"],
     ["medium_term", "de los últimos 6 meses"],
@@ -1244,21 +1331,7 @@ function renderLibrary(view) {
     );
 
     const topBtn = ui.el("button", { class: "btn", type: "button" }, ui.icon("plus"), "Tus más escuchadas");
-    topBtn.addEventListener("click", (e) => {
-      if (!auth.hasScope("user-top-read")) {
-        showError("Para traer tus más escuchadas hace falta un permiso nuevo. Cierra sesión y vuelve a entrar: Spotify te lo pedirá una sola vez.", null, { retry: false });
-        return;
-      }
-      const range = rangeSelect.value;
-      const label = TOP_RANGES.find(([value]) => value === range)?.[1] ?? "";
-      stageImport({
-        kind: "top",
-        id: `top:${range}`,
-        title: "Tus más escuchadas",
-        subtitle: `Lo que más sonó ${label}`,
-        load: () => library.previewTopTracks(range),
-      }, e.currentTarget);
-    });
+    topBtn.addEventListener("click", (e) => importTopTracks(rangeSelect.value, e.currentTarget));
 
     return ui.el("div", { class: "lib-shortcuts" },
       ui.el("button", {
@@ -1350,6 +1423,7 @@ function renderLibrary(view) {
   renderChips();
   renderResults();
 
+  loadMe();
   loadOwnPlaylists()
     .then(() => {
       if (query.trim().length < 2 && !loading) renderResults();

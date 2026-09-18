@@ -66,10 +66,16 @@ abierta (DevTools) y los pasos exactos.
       discografía. Verificar que `/artists/{id}/albums` pide `limit=10` en
       **todas** las páginas (no 10 en la primera y 50 en la segunda) y que un
       tema que salió en álbum y en single aparece **una sola vez**.
-- [ ] Playlist que no es tuya: pegar el enlace de un «This Is…» → aparece la
-      tarjeta «Spotify no comparte las canciones de esta lista» con la salida
-      (copiarla a una playlist propia), no un error rojo ni «no pudimos leer
-      ese enlace».
+- [ ] Playlist que no es tuya: pegar el enlace de un «This Is…» o de tu «Top
+      canciones 20XX» → **al pegar, sin hacer clic en nada**, aparece la
+      tarjeta «Spotify no comparte las canciones de esta lista», con el dueño
+      real («La creó Spotify, no tu usuario»), el botón «Traer tus más
+      escuchadas» y el «Intentar igual». Nunca un error rojo ni «no pudimos
+      leer ese enlace».
+- [ ] Sin falsos positivos: pegar el enlace de una playlist **tuya** → tarjeta
+      normal con «Importar», no la tarjeta de bloqueo.
+- [ ] «Traer tus más escuchadas» desde esa tarjeta abre la ventana de
+      selección con `/me/top/tracks` en «de siempre».
 - [ ] Enlace pegado: pegar una URL o URI de Spotify (canción, álbum o
       playlist) → aparece la tarjeta «Enlace de … detectado» con portada y
       «Importar». Una playlist privada de la cuenta (p. ej. «Top canciones

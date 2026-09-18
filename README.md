@@ -79,12 +79,21 @@ Un modo principal y tres de práctica suelta:
 
 > **Lo que Spotify no deja importar.** Desde febrero de 2026, una playlist que
 > no sea tuya devuelve solo nombre y portada — y «no tuya» incluye las que
-> Spotify arma *para vos*: «This Is…», Descubrimiento semanal, «Top canciones
-> 20XX», radios. Ninguna se puede traer. La app lo dice en lugar de fallar, y
-> ofrece las dos salidas: copiá esas canciones a una playlist tuya en Spotify
-> e importá esa, o usá «Tus más escuchadas», que sale del mismo cálculo de
-> Spotify por un endpoint que sí está abierto. Tampoco existe ya
-> `/artists/{id}/top-tracks`, por eso el artista se importa disco por disco.
+> Spotify arma *para vos*: «Top canciones 20XX», Descubrimiento semanal,
+> «This Is…», las radios. Sus ids empiezan con `37i9dQZ` y su `owner.id` es
+> `spotify`, aunque en la app de Spotify aparezcan en tu biblioteca.
+>
+> Al pegar uno de esos enlaces, la app compara el dueño contra tu `/me` y te
+> dice de quién es la lista, en vez de fallar. Desde ahí ofrece las dos
+> salidas: **«Traer tus más escuchadas»** (`/me/top/tracks`, el mismo cálculo
+> de Spotify por un endpoint abierto) o copiar esas canciones a una playlist
+> tuya en Spotify e importar esa. Queda un «Intentar igual» por si Spotify
+> aflojara el límite. El único desbloqueo real sería que la app pase a
+> **Extended Quota Mode** en el Dashboard de Spotify, que es una solicitud con
+> revisión manual.
+>
+> Tampoco existe ya `/artists/{id}/top-tracks`, por eso el artista se importa
+> disco por disco.
 
 ## Deploy en Coolify
 

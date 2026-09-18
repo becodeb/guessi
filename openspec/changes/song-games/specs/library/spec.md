@@ -39,8 +39,14 @@ The system MUST import tracks from user playlists (`GET /me/playlists` then `GET
 #### Scenario: A playlist the user does not own is explained, not failed
 
 - GIVEN a Spotify-made playlist that returns metadata without items
-- WHEN the user pastes its link or imports it
-- THEN the app states that Spotify withholds the songs and names the workaround
+- WHEN the user pastes its link
+- THEN the app names its real owner before any import is attempted, and offers most-played songs as the reachable equivalent
+
+#### Scenario: A playlist the user owns is not mistaken for a blocked one
+
+- GIVEN a playlist whose owner id matches the signed-in user
+- WHEN the user pastes its link
+- THEN it is offered for import as usual
 
 #### Scenario: Search import
 
