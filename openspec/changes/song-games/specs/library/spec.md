@@ -4,29 +4,41 @@
 
 ### Requirement: Import Sources
 
-The system MUST import tracks from user playlists (`GET /me/playlists` then `GET /playlists/{id}/items` per playlist; the `/tracks` endpoint MUST NOT be used), liked songs (`GET /me/tracks`), and search (`GET /search?type=track`). Paged endpoints MUST request `limit=50` and iterate via `next`/`offset` until exhausted. Imported tracks MUST populate a pending list awaiting user selection.
+The system MUST import tracks from user playlists (`GET /me/playlists` then `GET /playlists/{id}/items` per playlist; the `/tracks` endpoint MUST NOT be used), liked songs (`GET /me/tracks`), search (`GET /search`), and pasted Spotify links. Paged endpoints MUST request `limit=50` and iterate via `next`/`offset` until exhausted, re-sending the same query parameters on every page. A playlist row MUST be read through its `item` key (with `track` as the legacy fallback), and rows that carry no importable track MUST be counted and reported, never silently dropped. An import MUST stage what it fetched for the user to confirm; nothing enters the library until they do.
 
 #### Scenario: Playlist import pages to completion
 
 - GIVEN a playlist with 120 tracks
 - WHEN the app requests `/playlists/{id}/items` with `limit=50`
-- THEN it fetches 3 pages and all 120 tracks appear in the pending list
+- THEN it fetches 3 pages with identical parameters and offers all 120 tracks
+
+#### Scenario: Playlist rows are unwrapped, not read flat
+
+- GIVEN a page of `/playlists/{id}/items` whose rows nest the track under `item`
+- WHEN the app reads the page
+- THEN every row yields its track, and a `fields` mask that would flatten the row MUST NOT be sent
 
 #### Scenario: Search import
 
 - GIVEN the user searches a track query
-- WHEN results return from `GET /search?type=track`
-- THEN matching tracks appear in the pending list
+- WHEN results return from `GET /search`
+- THEN matching tracks can be added to the pool one by one
 
 ### Requirement: Selection and "Songs I Know" Pool
 
-The system MUST let the user select tracks from the pending list and add them to "songs I know" — a curated set of `track.id`s that is the random pool for Games 1 & 3 and the membership set for Game 2. It SHOULD offer an "add all" aid. The system MUST support removing songs from the pool and MUST display counts of pending and selected tracks.
+The system MUST let the user confirm which of a staged import joins "songs I know" — a curated set of `track.id`s that is the random pool for Games 1 & 3 and the membership set for Game 2. The confirmation MUST show every staged track preselected, mark the ones already in the pool as unselectable, and offer select-all / select-none and a text filter. Dismissing it MUST leave the library untouched. The system MUST support removing songs from the pool and MUST display the pool count.
 
 #### Scenario: Selecting tracks into the pool
 
-- GIVEN a pending list with 10 tracks
-- WHEN the user selects 4 and confirms
-- THEN those 4 `track.id`s join "songs I know" and the pending list shrinks
+- GIVEN a staged import of 10 tracks
+- WHEN the user unchecks 6 and confirms
+- THEN the remaining 4 `track.id`s join "songs I know" and the dialog closes
+
+#### Scenario: Dismissing an import changes nothing
+
+- GIVEN a staged import of 10 tracks
+- WHEN the user cancels or presses Escape
+- THEN "songs I know" is unchanged
 
 #### Scenario: Removing a known song
 

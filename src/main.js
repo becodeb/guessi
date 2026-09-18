@@ -19,7 +19,7 @@ import * as roundGame from "./games/round-game.js";
 const appState = {
   view: "login",
   auth: { status: "anon", scopes: [] },
-  library: { pendingCount: 0, poolCount: 0, loading: false, slowDown: false, saveError: false },
+  library: { poolCount: 0, loading: false, slowDown: false, saveError: false },
   player: {
     status: "off",
     volume: 80,
@@ -77,8 +77,9 @@ function route() {
   current = null;
   appState.view = def.view;
 
-  // Let the round view use the full wide layout; other views keep the 980px cap.
-  const wide = def.view === "ronda";
+  // The round and the library both lay out in columns: give them the full
+  // wide container instead of the 980px reading cap.
+  const wide = def.view === "ronda" || def.view === "library";
 
   navHost = renderNav();
   if (wide) navHost.classList.add("container--wide");
@@ -512,24 +513,155 @@ function coverUrl(item, kind) {
   return item?.images?.[0]?.url;
 }
 
-function importMessage(label, { fetched = 0, added = 0 } = {}) {
-  if (fetched === 0) return `${label}: no se encontraron canciones`;
-  if (added === 0) return `${label}: ya estaban en pendientes o en «Lo que sé»`;
-  if (added === 1) return fetched > 1 ? `${label}: 1 nueva de ${fetched}` : `${label}: 1 canción añadida`;
-  if (added < fetched) return `${label}: ${added} nuevas de ${fetched}`;
-  return `${label}: ${added} canciones añadidas`;
+function songWord(n) {
+  return n === 1 ? "canción" : "canciones";
+}
+
+/** "71 canciones" for a playlist whose count Spotify may not expose at all. */
+function playlistCountText(item) {
+  const total = api.playlistTrackTotal(item);
+  return total == null ? "" : `${total} ${songWord(total)}`;
+}
+
+// --- import dialog -----------------------------------------------------------------------
+// Importing IS adding: the dialog is where the user says what enters «Lo que
+// sé», and closing it without confirming leaves the library untouched.
+
+/**
+ * Show every track a source holds and let the user confirm the ones to keep.
+ * @param {{title: string, subtitle: string, coverUrl?: string, kind: string,
+ *          tracks: object[], total: number, skipped: number}} source
+ * @returns {Promise<{added: number, already: number} | null>} null when dismissed
+ */
+function openImportDialog(source) {
+  const { title, subtitle, kind, tracks, total, skipped } = source;
+  const known = new Set(tracks.filter((t) => library.isInPool(t.id)).map((t) => t.id));
+  const fresh = tracks.filter((t) => !known.has(t.id));
+  const selected = new Set(fresh.map((t) => t.id));
+  const nothingToDo = fresh.length === 0;
+
+  const summary = [`${total} ${songWord(total)}`];
+  if (known.size > 0) summary.push(`${known.size} ya ${known.size === 1 ? "la sabes" : "las sabes"}`);
+  if (skipped > 0) summary.push(`${skipped} sin sonido en Spotify`);
+
+  const countLabel = ui.el("p", { class: "sheet__selection", "aria-live": "polite" });
+  const confirmBtn = ui.el("button", { class: "btn btn--primary", type: "button" });
+
+  const syncFooter = () => {
+    const n = selected.size;
+    countLabel.textContent = n === 0 ? "Ninguna elegida" : `${n} ${n === 1 ? "elegida" : "elegidas"}`;
+    confirmBtn.textContent = n === 0 ? "Elige al menos una" : `Añadir ${n} ${songWord(n)}`;
+    confirmBtn.disabled = n === 0;
+  };
+
+  const rows = [];
+  const list = ui.el("ul", { class: "pick-list" });
+  for (const track of tracks) {
+    const isKnown = known.has(track.id);
+    const sub = `${artistsText(track)}${track.album?.name ? ` · ${track.album.name}` : ""}`;
+    let control;
+    if (isKnown) {
+      control = ui.el("span", { class: "pick-row__mark" }, ui.icon("check"));
+    } else {
+      control = ui.el("input", { class: "pick-row__check", type: "checkbox", checked: true });
+      control.addEventListener("change", () => {
+        if (control.checked) selected.add(track.id);
+        else selected.delete(track.id);
+        syncFooter();
+      });
+    }
+    const row = ui.el("li", { class: `pick-row${isKnown ? " pick-row--known" : ""}` },
+      ui.el("label", { class: "pick-row__label" },
+        control,
+        coverEl(track.album?.images?.[0]?.url, "pick-row__thumb", "note"),
+        ui.el("span", { class: "pick-row__body" },
+          ui.el("span", { class: "pick-row__title", text: track.name ?? "" }),
+          ui.el("span", { class: "pick-row__sub", text: sub }),
+        ),
+        isKnown ? ui.el("span", { class: "pick-row__tag", text: "Ya la sabes" }) : null,
+      ),
+    );
+    rows.push({ row, control, isKnown, haystack: match.normalize(`${track.name ?? ""} ${sub}`) });
+    list.append(row);
+  }
+
+  const setAll = (on) => {
+    for (const entry of rows) {
+      if (entry.isKnown || entry.row.hidden) continue;
+      entry.control.checked = on;
+      entry.control.dispatchEvent(new Event("change"));
+    }
+  };
+
+  const filterInput = ui.el("input", {
+    class: "sheet__filter",
+    type: "search",
+    placeholder: "Filtra esta lista…",
+    "aria-label": "Filtrar las canciones de esta lista",
+    autocomplete: "off",
+  });
+  filterInput.addEventListener("input", () => {
+    const needle = match.normalize(filterInput.value);
+    for (const entry of rows) entry.row.hidden = needle.length > 0 && !entry.haystack.includes(needle);
+  });
+
+  const body = nothingToDo
+    ? ui.el("div", { class: "sheet__done" },
+        ui.el("p", { class: "sheet__done-title", text: `Ya sabes ${known.size === 1 ? "la única canción" : `las ${known.size} canciones`} de aquí.` }),
+        ui.el("p", { class: "muted-note", text: "Busca otra playlist o pega un enlace de Spotify para sumar canciones nuevas." }),
+      )
+    : list;
+
+  const head = ui.el("header", { class: "sheet__head" },
+    coverEl(source.coverUrl, "sheet__cover", kind === "playlist" ? "list" : "album"),
+    ui.el("div", { class: "sheet__heading" },
+      ui.el("p", { class: "sheet__source", text: subtitle }),
+      ui.el("h2", { class: "sheet__title", text: title }),
+      ui.el("p", { class: "sheet__stat", text: summary.join(" · ") }),
+    ),
+  );
+  if (source.coverUrl) head.style.setProperty("--sheet-art", `url("${source.coverUrl}")`);
+
+  const handle = ui.openDialog({ label: `Importar ${title}`, class: "sheet" },
+    head,
+    nothingToDo
+      ? null
+      : ui.el("div", { class: "sheet__tools" },
+          filterInput,
+          ui.el("div", { class: "sheet__toggles" },
+            ui.el("button", { class: "btn btn--sm btn--ghost", type: "button", text: "Todas", on: { click: () => setAll(true) } }),
+            ui.el("button", { class: "btn btn--sm btn--ghost", type: "button", text: "Ninguna", on: { click: () => setAll(false) } }),
+          ),
+        ),
+    body,
+    ui.el("footer", { class: "sheet__foot" },
+      nothingToDo ? ui.el("span") : countLabel,
+      ui.el("div", { class: "sheet__actions" },
+        ui.el("button", {
+          class: "btn btn--ghost",
+          type: "button",
+          text: nothingToDo ? "Cerrar" : "Cancelar",
+          on: { click: () => handle.close("dismiss") },
+        }),
+        nothingToDo ? null : confirmBtn,
+      ),
+    ),
+  );
+
+  confirmBtn.addEventListener("click", () => handle.close("confirm"));
+  syncFooter();
+  if (!nothingToDo) filterInput.focus();
+
+  return handle.closed.then((outcome) =>
+    outcome === "confirm" ? library.commitTracks(tracks, selected) : null
+  );
 }
 
 function renderLibrary(view) {
   view.innerHTML = "";
-  view.append(
-    ui.el("h1", { class: "display display--md", text: "Tu biblioteca" }),
-    ui.el("p", { class: "muted-note", text: "Busca canciones, álbumes o playlists y súmalas a «Lo que sé» para que entren en los juegos." })
-  );
 
   const counts = ui.el("p", { class: "lib-counts" });
-  const pendingHost = ui.el("div");
-  const poolHost = ui.el("div");
+  const poolHost = ui.el("div", { class: "pool-panel__list" });
   const errorHost = ui.el("div");
 
   // --- local search state ----------------------------------------------------
@@ -540,72 +672,32 @@ function renderLibrary(view) {
   let browseFailed = false;
   let seq = 0;
   let searchAbort = null;
-  const imported = new Set();
+  let poolFilter = "";
+  let importing = false;
 
   const refresh = () => {
-    counts.textContent = `Pendientes ${library.getPending().length} · Lo que sé ${library.getPoolCount()}`;
-  };
-
-  const renderPending = () => {
-    pendingHost.innerHTML = "";
-    const pending = library.getPending();
-    if (pending.length === 0) {
-      pendingHost.append(ui.el("p", { class: "muted-note", text: "Sin pendientes. Importa una playlist o un álbum, o busca canciones." }));
-      return;
-    }
-    const list = ui.el("ul", { class: "pending-list" });
-    for (const t of pending) {
-      const row = ui.el("li", { class: "pending-row" },
-        thumb(t),
-        ui.el("div", { class: "stack", style: "gap:2px" },
-          ui.el("span", { class: "pending-row__title", text: t.name }),
-          ui.el("span", { class: "pending-row__artists", text: t.artists.map((a) => a.name).join(", ") }),
-        ),
-        ui.el("button", {
-          class: "btn btn--sm",
-          text: "Añadir",
-          on: {
-            click: () => {
-              library.addToPool([t.id]);
-              refresh();
-              renderPending();
-              renderPool();
-            },
-          },
-        }),
-      );
-      list.append(row);
-    }
-    pendingHost.append(
-      ui.el("div", { class: "row row--between" },
-        ui.el("p", { class: "guess-panel__title", text: "Pendientes de importación" }),
-        ui.el("button", {
-          class: "btn btn--sm btn--ghost",
-          text: "Añadir todo",
-          on: {
-            click: () => {
-              library.addAllPendingToPool();
-              refresh();
-              renderPending();
-              renderPool();
-            },
-          },
-        }),
-      ),
-      list,
-    );
+    const n = library.getPoolCount();
+    counts.textContent = n === 0 ? "Todavía ninguna" : `${n} ${songWord(n)}`;
   };
 
   const renderPool = () => {
     poolHost.innerHTML = "";
-    const tracks = library.getPoolTracks();
+    const all = library.getPoolTracks();
+    if (all.length === 0) {
+      poolHost.append(ui.el("p", { class: "muted-note", text: "Importa una playlist o un álbum y sus canciones aparecerán aquí." }));
+      return;
+    }
+    const needle = match.normalize(poolFilter);
+    const tracks = needle.length === 0
+      ? all
+      : all.filter((t) => match.normalize(`${t.name} ${t.artists.map((a) => a.name).join(" ")} ${t.album?.name ?? ""}`).includes(needle));
     if (tracks.length === 0) {
-      poolHost.append(ui.el("p", { class: "muted-note", text: "Tu biblioteca está vacía. Importa canciones para empezar a jugar." }));
+      poolHost.append(ui.el("p", { class: "muted-note", text: `Ninguna coincide con «${poolFilter.trim()}».` }));
       return;
     }
     const list = ui.el("ul", { class: "pool-list" });
     for (const t of tracks) {
-      const row = ui.el("li", { class: "pool-row" },
+      list.append(ui.el("li", { class: "pool-row" },
         thumb(t),
         ui.el("div", { class: "stack", style: "gap:2px" },
           ui.el("span", { class: "pending-row__title", text: t.name }),
@@ -617,51 +709,19 @@ function renderLibrary(view) {
           on: {
             click: () => {
               library.removeFromPool(t.id);
-              refresh();
-              renderPending();
-              renderPool();
+              afterChange();
             },
           },
         }, ui.icon("trash")),
-      );
-      list.append(row);
+      ));
     }
+    poolHost.append(list);
+  };
 
-    // Two-step «Vaciar»: the first click arms it, the second empties the pool.
-    let armed = false;
-    let disarmTimer = null;
-    const clearPoolBtn = ui.el("button", {
-      class: "btn btn--sm btn--ghost",
-      type: "button",
-      text: "Vaciar",
-    });
-    clearPoolBtn.addEventListener("click", () => {
-      if (!armed) {
-        armed = true;
-        clearPoolBtn.textContent = "¿Vaciar todo?";
-        clearPoolBtn.className = "btn btn--sm btn--danger";
-        disarmTimer = setTimeout(() => {
-          armed = false;
-          clearPoolBtn.textContent = "Vaciar";
-          clearPoolBtn.className = "btn btn--sm btn--ghost";
-        }, 4000);
-        return;
-      }
-      clearTimeout(disarmTimer);
-      library.clearPool();
-      refresh();
-      renderPending();
-      renderPool();
-      ui.toast("«Lo que sé» quedó vacío.", "success");
-    });
-
-    poolHost.append(
-      ui.el("div", { class: "row row--between" },
-        ui.el("p", { class: "guess-panel__title", text: "Lo que sé" }),
-        clearPoolBtn,
-      ),
-      list,
-    );
+  const afterChange = () => {
+    refresh();
+    renderPool();
+    renderResults();
   };
 
   // --- search panel ----------------------------------------------------------
@@ -689,7 +749,7 @@ function renderLibrary(view) {
 
   function showError(msg, err) {
     errorHost.innerHTML = "";
-    const banner = ui.el("div", { class: "banner banner--error" },
+    errorHost.append(ui.el("div", { class: "banner banner--error" },
       ui.icon("warn"),
       ui.el("div", { class: "banner__body" },
         ui.el("span", { text: err?.message === "Sesión expirada" ? "Vuelve a iniciar sesión." : msg }),
@@ -699,25 +759,67 @@ function renderLibrary(view) {
           on: { click: () => route() },
         }),
       ),
-    );
-    errorHost.append(banner);
+    ));
   }
 
-  async function runImport(action, label, { skeleton = true } = {}) {
-    errorHost.innerHTML = "";
-    if (skeleton) pendingHost.replaceChildren(ui.skeleton(3));
-    try {
-      const res = await action();
-      refresh();
-      renderPending();
-      renderPool();
-      ui.toast(importMessage(label, res), "success");
-      return res;
-    } catch (err) {
-      renderPending();
-      showError("No se pudo importar. ", err);
-      return null;
+  /**
+   * Fetch a source, hand it to the dialog, and report what the library gained.
+   * The button stays in its loading state until the dialog closes.
+   */
+  async function stageImport({ kind, id, title, subtitle, coverUrl, load }, btn) {
+    // One sheet at a time: a second source would stack a second modal over
+    // the choice the user has not made yet.
+    if (importing) return;
+    importing = true;
+    const original = btn?.textContent;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Abriendo…";
     }
+    errorHost.innerHTML = "";
+    try {
+      const preview = await load();
+      if (preview.tracks.length === 0) {
+        ui.toast(`«${title}» no tiene canciones que se puedan importar.`, "info");
+        return;
+      }
+      const result = await openImportDialog({
+        title,
+        subtitle,
+        coverUrl,
+        kind,
+        tracks: preview.tracks,
+        total: preview.total || preview.tracks.length,
+        skipped: preview.skipped ?? 0,
+      });
+      if (!result) return;
+      if (kind === "album" && preview.rawTracks) library.cacheAlbumTracklist(id, preview.rawTracks);
+      afterChange();
+      if (result.added > 0) {
+        ui.toast(`${result.added} ${songWord(result.added)} en «Lo que sé».`, "success");
+      }
+    } catch (err) {
+      showError("No se pudo abrir esa lista. ", err);
+    } finally {
+      importing = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+  }
+
+  function importSource(kind, item, btn) {
+    return stageImport({
+      kind,
+      id: item.id,
+      title: item.name ?? "",
+      subtitle: kind === "album"
+        ? [artistsText(item), yearOf(item)].filter(Boolean).join(" · ")
+        : `Playlist de ${item.owner?.display_name ?? "Spotify"}`,
+      coverUrl: coverUrl(item, kind),
+      load: () => library.previewRef({ type: kind, id: item.id }),
+    }, btn);
   }
 
   // --- results rendering -----------------------------------------------------
@@ -732,29 +834,16 @@ function renderLibrary(view) {
     return ui.el("div", { class: "media-grid" }, ...cards);
   }
 
-  async function runMediaImport(kind, item, btn) {
-    btn.disabled = true;
-    btn.textContent = "Importando…";
-    const res = await runImport(() => library.importRef({ type: kind, id: item.id }), `«${item.name}»`);
-    if (res) {
-      imported.add(`${kind}:${item.id}`);
-      renderResults();
-    } else {
-      btn.disabled = false;
-      btn.textContent = "Importar";
-    }
-  }
-
   function mediaCard(kind, item, { owned = false } = {}) {
-    const done = imported.has(`${kind}:${item.id}`);
     const meta = [];
     if (owned) meta.push("Tuya");
     if (kind === "album") {
       const year = yearOf(item);
       if (year) meta.push(year);
       if (item.total_tracks) meta.push(`${item.total_tracks} temas`);
-    } else if (item.tracks?.total != null) {
-      meta.push(`${item.tracks.total} canciones`);
+    } else {
+      const count = playlistCountText(item);
+      if (count) meta.push(count);
     }
     return ui.el("article", { class: "media-card" },
       ui.el("div", { class: "media-card__cover" },
@@ -767,48 +856,33 @@ function renderLibrary(view) {
       ),
       ui.el("div", { class: "media-card__actions" },
         ui.el("button", {
-          class: `btn btn--sm${done ? " btn--ghost" : " btn--primary"}`,
+          class: "btn btn--sm btn--primary",
           type: "button",
-          disabled: done,
-          text: done ? "Importado" : "Importar",
-          on: { click: (e) => runMediaImport(kind, item, e.currentTarget) },
+          text: "Importar",
+          on: { click: (e) => importSource(kind, item, e.currentTarget) },
         })
       ),
     );
   }
 
-  async function addTrack(t, btn) {
+  function addTrack(track, btn) {
     btn.disabled = true;
-    btn.textContent = "Añadiendo…";
-    const res = await runImport(async () => {
-      const added = library.addTracks([t]);
-      return { fetched: 1, added };
-    }, `«${t.name}»`, { skeleton: false });
-    if (res) renderResults();
-    else {
-      btn.disabled = false;
-      btn.textContent = "Añadir";
-    }
+    const { added } = library.commitTracks([track], [track.id]);
+    if (added > 0) ui.toast(`«${track.name}» en «Lo que sé».`, "success");
+    afterChange();
   }
 
   function trackList(tracks) {
     const list = ui.el("ul", { class: "result-list" });
     for (const t of tracks) {
-      const inPool = library.isInPool(t.id);
-      const pending = !inPool && library.isPending(t.id);
-      let action;
-      if (inPool) {
-        action = ui.el("span", { class: "chip chip--ok" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "Ya lo sé" }));
-      } else if (pending) {
-        action = ui.el("span", { class: "chip chip--muted" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "En pendientes" }));
-      } else {
-        action = ui.el("button", {
-          class: "btn btn--sm",
-          type: "button",
-          text: "Añadir",
-          on: { click: (e) => addTrack(t, e.currentTarget) },
-        }, ui.icon("plus"));
-      }
+      const action = library.isInPool(t.id)
+        ? ui.el("span", { class: "chip chip--ok" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "Ya la sabes" }))
+        : ui.el("button", {
+            class: "btn btn--sm",
+            type: "button",
+            text: "Añadir",
+            on: { click: (e) => addTrack(t, e.currentTarget) },
+          }, ui.icon("plus"));
       list.append(ui.el("li", { class: "result-row" },
         coverEl(t.album?.images?.[0]?.url, "result-row__thumb", "note"),
         ui.el("div", { class: "result-row__body" },
@@ -824,21 +898,31 @@ function renderLibrary(view) {
   function linkCard({ ref, item }) {
     const kind = ref.type;
     const supported = kind !== "artist";
-    const done = imported.has(`${kind}:${item.id}`);
     let sub = "";
     if (kind === "track") sub = `${artistsText(item)} · ${item.album?.name ?? ""}`;
     else if (kind === "album") sub = [artistsText(item), yearOf(item), item.total_tracks ? `${item.total_tracks} temas` : ""].filter(Boolean).join(" · ");
-    else if (kind === "playlist") sub = `${item.owner?.display_name ?? "Spotify"} · ${item.tracks?.total ?? 0} canciones`;
+    else if (kind === "playlist") sub = [item.owner?.display_name ?? "Spotify", playlistCountText(item)].filter(Boolean).join(" · ");
 
-    const action = supported
-      ? ui.el("button", {
-          class: `btn${done ? " btn--ghost" : " btn--primary"}`,
-          type: "button",
-          disabled: done,
-          text: done ? "Importado" : "Importar",
-          on: { click: (e) => runMediaImport(kind, item, e.currentTarget) },
-        })
-      : ui.el("button", { class: "btn", type: "button", disabled: true, text: "No disponible" });
+    let action;
+    if (!supported) {
+      action = ui.el("button", { class: "btn", type: "button", disabled: true, text: "No disponible" });
+    } else if (kind === "track" && library.isInPool(item.id)) {
+      action = ui.el("span", { class: "chip chip--ok" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "Ya la sabes" }));
+    } else if (kind === "track") {
+      action = ui.el("button", {
+        class: "btn btn--primary",
+        type: "button",
+        text: "Añadir",
+        on: { click: (e) => addTrack(item, e.currentTarget) },
+      });
+    } else {
+      action = ui.el("button", {
+        class: "btn btn--primary",
+        type: "button",
+        text: "Importar",
+        on: { click: (e) => importSource(kind, item, e.currentTarget) },
+      });
+    }
 
     return ui.el("div", { class: "link-result" },
       coverEl(coverUrl(item, kind), "link-result__cover", kind === "playlist" ? "list" : "album"),
@@ -876,7 +960,7 @@ function renderLibrary(view) {
         resultsHost.replaceChildren(ui.el("p", { class: "muted-note", text: "Todavía no tienes playlists en Spotify." }));
         return;
       }
-      const shown = ownPlaylists.slice(0, 18);
+      const shown = ownPlaylists.slice(0, 24);
       const kids = [
         sectionHead("Tus playlists", ownPlaylists.length),
         mediaGrid(shown.map((p) => mediaCard("playlist", p, { owned: true }))),
@@ -1081,30 +1165,88 @@ function renderLibrary(view) {
   });
   clearBtn.addEventListener("click", clearSearch);
 
+  const poolFilterInput = ui.el("input", {
+    class: "pool-panel__filter",
+    type: "search",
+    placeholder: "Busca en lo que sabes…",
+    "aria-label": "Buscar dentro de «Lo que sé»",
+    autocomplete: "off",
+  });
+  poolFilterInput.addEventListener("input", () => {
+    poolFilter = poolFilterInput.value;
+    renderPool();
+  });
+
+  // Two-step «Vaciar»: the first click arms it, the second empties the pool.
+  let armed = false;
+  let disarmTimer = null;
+  const clearPoolBtn = ui.el("button", {
+    class: "btn btn--sm btn--ghost",
+    type: "button",
+    text: "Vaciar",
+  });
+  clearPoolBtn.addEventListener("click", () => {
+    if (!armed) {
+      armed = true;
+      clearPoolBtn.textContent = "¿Vaciar todo?";
+      clearPoolBtn.className = "btn btn--sm btn--danger";
+      disarmTimer = setTimeout(() => {
+        armed = false;
+        clearPoolBtn.textContent = "Vaciar";
+        clearPoolBtn.className = "btn btn--sm btn--ghost";
+      }, 4000);
+      return;
+    }
+    clearTimeout(disarmTimer);
+    armed = false;
+    clearPoolBtn.textContent = "Vaciar";
+    clearPoolBtn.className = "btn btn--sm btn--ghost";
+    library.clearPool();
+    afterChange();
+    ui.toast("«Lo que sé» quedó vacío.", "success");
+  });
+
   view.append(
-    ui.el("div", { class: "card stack" },
-      searchField,
-      ui.el("p", { class: "search-hint", text: "Busca por nombre o pega un enlace de Spotify (canción, álbum o playlist)." }),
-      errorHost,
-      chipsHost,
-      resultsHost,
+    ui.el("div", { class: "lib-intro" },
+      ui.el("h1", { class: "display display--md", text: "Tu biblioteca" }),
+      ui.el("p", { class: "muted-note", text: "Lo que añadas aquí es lo que suena en los juegos." }),
     ),
-    ui.el("div", { class: "card lib-toolbar lib-toolbar--between" },
-      ui.el("button", {
-        class: "btn",
-        type: "button",
-        on: { click: () => runImport(() => library.importLiked(), "«Me gusta»") },
-      }, ui.icon("plus"), "Importar «Me gusta»"),
-      counts,
-    ),
-    ui.el("div", { class: "section stack--lg" },
-      pendingHost,
-      poolHost,
+    ui.el("div", { class: "lib-layout" },
+      ui.el("div", { class: "card stack lib-find" },
+        ui.el("div", { class: "lib-find__bar" },
+          searchField,
+          ui.el("button", {
+            class: "btn lib-find__liked",
+            type: "button",
+            on: {
+              click: (e) => stageImport({
+                kind: "liked",
+                id: "liked",
+                title: "Me gusta",
+                subtitle: "Tus canciones guardadas en Spotify",
+                load: () => library.previewLiked(),
+              }, e.currentTarget),
+            },
+          }, ui.icon("plus"), "Me gusta"),
+        ),
+        ui.el("p", { class: "search-hint", text: "Busca por nombre o pega un enlace de Spotify (canción, álbum o playlist)." }),
+        errorHost,
+        chipsHost,
+        resultsHost,
+      ),
+      ui.el("aside", { class: "card pool-panel", "aria-label": "Lo que sé" },
+        ui.el("div", { class: "pool-panel__head" },
+          ui.el("h2", { class: "pool-panel__title", text: "Lo que sé" }),
+          counts,
+          clearPoolBtn,
+        ),
+        poolFilterInput,
+        poolHost,
+      ),
     ),
   );
 
   refresh();
-  renderPending();
   renderPool();
   renderChips();
   renderResults();

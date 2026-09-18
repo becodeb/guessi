@@ -66,8 +66,9 @@ Un modo principal y tres de práctica suelta:
 4. Abrí **http://127.0.0.1:8080/** e iniciá sesión con Spotify.
 5. En **Biblioteca**, buscá canciones, álbumes o playlists (incluidas tus
    playlists privadas, que aparecen al abrir la vista), o pegá un enlace de
-   Spotify; lo que importes queda en la lista de pendientes y de ahí pasa a
-   **«Lo que sé»** para entrar en los juegos.
+   Spotify. «Importar» abre una ventana con la lista completa, ya tildada:
+   destildá lo que no quieras, confirmá y esas canciones entran derecho a
+   **«Lo que sé»**, que es lo que suena en los juegos.
 
 ## Deploy en Coolify
 
@@ -156,7 +157,7 @@ compactación, cuota y migración v1→v2). Exit 0 = ok.
 «Lo que sé» vive en `deoido.v1.library` (esquema `version: 2`): cada álbum se
 guarda una sola vez (`albums`) y los temas lo referencian por `albumId`, así
 una biblioteca grande de miles de temas entra en el localStorage del
-navegador. Solo se persiste el pool — los pendientes son de la sesión. Si el
+navegador. Si el
 navegador se queda sin espacio, la app reintenta sin las listas de temas
 (re-fetchables) y, si aun así no entra, avisa con un banner persistente.
 El botón «Vaciar», junto a «Lo que sé» en la Biblioteca, vacía el pool entero

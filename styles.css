@@ -1044,23 +1044,128 @@ button {
 }
 
 /* --------------------------------------------------------------------------
-   Library view
+   Library view: finder on the left, «Lo que sé» docked on the right
    -------------------------------------------------------------------------- */
 
-.lib-toolbar {
+.lib-intro {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--gap-lg);
 }
 
-.lib-toolbar--between {
-  justify-content: space-between;
+.lib-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-lg);
+  align-items: start;
+}
+
+/* The pool only earns its own column once the finder still has room to show
+   a grid of covers beside it. */
+@media (min-width: 1080px) {
+  .lib-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .lib-layout {
+    grid-template-columns: minmax(0, 1fr) 420px;
+  }
+}
+
+.lib-find__bar {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.lib-find__bar .search-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.lib-find__liked {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .lib-find__bar {
+    flex-wrap: wrap;
+  }
+
+  .lib-find__liked {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+.pool-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--gap);
+}
+
+/* Tall viewports keep the pool in view while the finder scrolls past it. */
+@media (min-width: 1080px) and (min-height: 700px) {
+  .pool-panel {
+    position: sticky;
+    top: var(--gap);
+    max-height: calc(100dvh - var(--gap) * 2);
+  }
+}
+
+.pool-panel__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pool-panel__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.pool-panel__head .lib-counts {
+  margin-right: auto;
+}
+
+.pool-panel__filter {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 0.9rem;
+}
+
+.pool-panel__filter::placeholder {
+  color: var(--text-dim);
+}
+
+.pool-panel__filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pool-panel__list {
+  overflow-y: auto;
+  min-height: 0;
+  /* Let the scrollbar sit at the panel edge instead of inside the rows. */
+  margin-right: -6px;
+  padding-right: 6px;
 }
 
 .lib-counts {
   color: var(--text-dim);
   font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .pending-list {
@@ -1104,11 +1209,18 @@ button {
 
 .pool-row {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 8px 4px;
   border-bottom: 1px solid var(--line);
+}
+
+.pool-row .pending-row__title,
+.pool-row .pending-row__artists {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pool-row:last-child {
@@ -1463,6 +1575,341 @@ button {
 
   .media-grid {
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Import sheet: the modal where a source becomes songs you know
+   -------------------------------------------------------------------------- */
+
+.dialog {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text);
+  max-width: min(1040px, calc(100vw - 24px));
+  width: 100%;
+  max-height: min(860px, calc(100dvh - 24px));
+  overflow: hidden;
+}
+
+.dialog::backdrop {
+  background: rgba(8, 7, 6, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet__head {
+  position: relative;
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  padding: var(--gap-lg);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  flex: none;
+}
+
+/* The source's own cover, blurred out of legibility, tints its own header —
+   the same move the album game makes when a cover is still unsolved. */
+.sheet__head::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  background-image: var(--sheet-art, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(40px) saturate(1.4);
+  opacity: 0.32;
+  z-index: 0;
+}
+
+.sheet__head::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(28, 26, 24, 0.45), var(--surface));
+  z-index: 0;
+}
+
+.sheet__head > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sheet__cover {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border-radius: var(--radius-cover);
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.sheet__cover--fallback {
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+
+.sheet__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sheet__source {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+.sheet__title {
+  font-size: clamp(1.4rem, 3.4vw, 2rem);
+  font-weight: 800;
+}
+
+.sheet__stat {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet__tools {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+  padding: 12px var(--gap-lg);
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet__filter {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 0.9rem;
+}
+
+.sheet__filter::placeholder {
+  color: var(--text-dim);
+}
+
+.sheet__filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sheet__toggles {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px var(--gap-lg) var(--gap);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 120px;
+  /* A 70-song playlist is a wall in one column; columns keep it scannable. */
+  column-gap: var(--gap-lg);
+}
+
+@media (min-width: 720px) {
+  .pick-list {
+    columns: 2;
+  }
+}
+
+@media (min-width: 1100px) {
+  .pick-list {
+    columns: 3;
+  }
+}
+
+.pick-row {
+  break-inside: avoid;
+}
+
+.pick-row__label {
+  display: grid;
+  grid-template-columns: auto 40px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--radius-input);
+  cursor: pointer;
+}
+
+.pick-row__label:hover {
+  background: var(--surface-2);
+}
+
+.pick-row--known .pick-row__label {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.pick-row--known .pick-row__label:hover {
+  background: none;
+}
+
+.pick-row__check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pick-row__mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.pick-row__mark .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pick-row__thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.pick-row__thumb--fallback {
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+
+.pick-row__thumb--fallback .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.pick-row__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pick-row__title,
+.pick-row__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-row__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pick-row__sub {
+  color: var(--text-dim);
+  font-size: 0.825rem;
+}
+
+.pick-row__tag {
+  flex: none;
+  color: var(--accent);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.sheet__done {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--gap-xl) var(--gap-lg);
+}
+
+.sheet__done-title {
+  font-weight: 600;
+}
+
+.sheet__foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--gap);
+  padding: 14px var(--gap-lg);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.sheet__selection {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet__actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+@media (max-width: 620px) {
+  .sheet__head {
+    padding: var(--gap);
+  }
+
+  .sheet__cover {
+    width: 64px;
+    height: 64px;
+  }
+
+  .sheet__tools,
+  .sheet__foot {
+    padding: 12px var(--gap);
+  }
+
+  .pick-list {
+    padding: 8px var(--gap) var(--gap);
+  }
+
+  /* The footer is the whole point of the sheet: let the count take its own
+     line rather than squeeze the confirm button. */
+  .sheet__foot {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .sheet__selection {
+    width: 100%;
+  }
+
+  .sheet__actions {
+    flex: 1;
+    margin-left: 0;
+  }
+
+  .sheet__actions .btn {
+    flex: 1;
   }
 }
 

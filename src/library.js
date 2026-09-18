@@ -115,12 +115,12 @@ export function addTracks(tracks) {
 }
 
 export async function importFromPlaylist(id) {
-  const tracks = await api.getPlaylistItems(id);
+  const { tracks } = await api.getPlaylistItems(id);
   return { fetched: tracks.length, added: addTracks(tracks) };
 }
 
 export async function importLiked() {
-  const tracks = await api.getLikedTracks();
+  const { tracks } = await api.getLikedTracks();
   return { fetched: tracks.length, added: addTracks(tracks) };
 }
 
@@ -141,6 +141,70 @@ export async function importAlbum(id) {
 export async function importTrack(id) {
   const track = await api.getTrack(id);
   return { fetched: 1, added: addTracks([track]) };
+}
+
+/**
+ * Everything a reference points at, fetched but NOT stored: the import dialog
+ * shows this and only what the user keeps reaches the library.
+ * @param {{type: string, id: string}} ref
+ * @returns {Promise<{tracks: object[], total: number, skipped: number, album?: object, rawTracks?: object[]}>}
+ */
+export async function previewRef({ type, id }) {
+  if (type === "playlist") return api.getPlaylistItems(id);
+  if (type === "album") {
+    const [album, tracks] = await Promise.all([api.getAlbum(id), api.getAlbumTracks(id)]);
+    const full = tracks.map((t) => ({ ...t, album }));
+    // `rawTracks` is what the Game 2 cache stores: the album is already the
+    // key, so repeating it inside every track would only bloat storage.
+    return { tracks: full, rawTracks: tracks, total: album?.total_tracks ?? full.length, skipped: 0, album };
+  }
+  if (type === "track") {
+    const track = await api.getTrack(id);
+    return { tracks: track?.id ? [track] : [], total: track?.id ? 1 : 0, skipped: 0 };
+  }
+  return { tracks: [], total: 0, skipped: 0 };
+}
+
+/** Liked songs, staged the same way as a reference. */
+export function previewLiked() {
+  return api.getLikedTracks();
+}
+
+/**
+ * Put the chosen tracks straight into «Lo que sé» — importing IS adding.
+ * @param {object[]} tracks the tracks that were offered
+ * @param {Iterable<string>} ids the subset the user kept
+ * @returns {{added: number, already: number}} added is what the pool gained
+ */
+export function commitTracks(tracks, ids) {
+  const keep = new Set(ids);
+  const lib = ensureLib();
+  let added = 0;
+  let already = 0;
+  for (const track of tracks) {
+    if (!track?.id || !keep.has(track.id)) continue;
+    upsertTrack(track);
+    if (lib.pool.includes(track.id)) {
+      already++;
+    } else {
+      lib.pool.push(track.id);
+      added++;
+    }
+  }
+  // A track the user just decided on is no longer awaiting a decision.
+  state.pending = state.pending.filter((t) => !keep.has(t.id));
+  persist();
+  return { added, already };
+}
+
+/** Cache a freshly fetched album tracklist so Game 2 does not refetch it. */
+export function cacheAlbumTracklist(albumId, tracks) {
+  const lib = ensureLib();
+  const album = lib.albums[albumId];
+  if (!album || !Array.isArray(tracks)) return;
+  album.tracks = tracks;
+  album.fetchedAt = new Date().toISOString();
+  persist();
 }
 
 /** Resolve a parsed Spotify link to its display metadata (no side effects). */

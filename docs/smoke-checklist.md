@@ -33,31 +33,44 @@ abierta (DevTools) y los pasos exactos.
 ## 2. Importación y dedupe
 
 - [ ] Playlists propias: al abrir Biblioteca se listan «Tus playlists» (portada,
-      nombre, cantidad) sin escribir nada; «Importar» en una tarjeta las manda a
-      pendientes con su portada. Escribir filtra esa lista (también privadas).
-- [ ] Playlist > 50 temas: importar una playlist larga y verificar que se
-      pagan (`limit=50` + `offset`) y que llegan todos (comparar con la
-      playlist en Spotify). No debe llamarse `/playlists/{id}/tracks`.
-- [ ] «Me gusta»: importar → aparecen como pendientes.
+      nombre, cantidad) sin escribir nada. Escribir filtra esa lista (también
+      privadas).
+- [ ] «Importar» abre la ventana de selección: portada, nombre, «N canciones»
+      y la lista completa tildada. Confirmar manda lo tildado a «Lo que sé»;
+      cancelar o Escape no agrega nada.
+- [ ] Playlist > 50 temas: importar una playlist larga y contar las filas de la
+      ventana contra la playlist en Spotify — **tienen que coincidir exacto**.
+      Verificar en DevTools que cada página manda los mismos parámetros
+      (`limit=50` + `offset`, sin perder `additional_types`). No debe llamarse
+      `/playlists/{id}/tracks`.
+- [ ] Reimportar la misma playlist: las canciones que ya sabés salen marcadas
+      «Ya la sabes» y no se pueden tildar; si están todas, la ventana lo dice y
+      solo ofrece «Cerrar».
+- [ ] «Me gusta»: el botón junto al buscador abre la misma ventana con tus
+      canciones guardadas.
 - [ ] Búsqueda en vivo: escribir ≥2 letras busca en Spotify y agrupa
       Canciones / Álbumes / Playlists de Spotify, con imágenes; los chips
-      «Todo · N» filtran por tipo. «Añadir» agrega el tema a pendientes (chip
-      «En pendientes»), «Importar» baja el álbum o la playlist completa.
+      «Todo · N» filtran por tipo. «Añadir» manda el tema derecho a «Lo que sé»
+      (queda el chip «Ya la sabes»), «Importar» abre la ventana del álbum o la
+      playlist completa.
 - [ ] Enlace pegado: pegar una URL o URI de Spotify (canción, álbum o
       playlist) → aparece la tarjeta «Enlace de … detectado» con portada y
       «Importar». Una playlist privada de la cuenta (p. ej. «Top canciones
       2025») funciona por enlace aunque no aparezca en el catálogo.
 - [ ] Enlace inválido o acortado (`spotify.link/…`, id truncado) → mensaje
       «No pudimos leer ese enlace», sin errores en consola.
-- [ ] «Añadir» de a una y «Añadir todo» → los temas pasan a «Lo que sé» y los
-      contadores «Pendientes N · Lo que sé M» se actualizan.
-- [ ] Dedupe: importar la misma playlist dos veces → sin duplicados en
-      pendientes; el pool tampoco duplica ids (verificar localStorage:
-      `deoido.v1.library` con `tracks` y `pool` sin repetidos).
-- [ ] «Quitar» un tema de «Lo que sé» → desaparece del pool y de los juegos.
+- [ ] Dentro de la ventana: «Todas» / «Ninguna» y el filtro de texto actúan
+      solo sobre las filas visibles; el contador y el botón «Añadir N
+      canciones» siguen la selección y se deshabilitan en cero.
+- [ ] Dedupe: importar la misma playlist dos veces → el pool no duplica ids
+      (verificar localStorage: `deoido.v1.library` con `tracks` y `pool` sin
+      repetidos).
+- [ ] El panel «Lo que sé» va a la derecha en pantallas anchas y debajo en
+      móvil; su buscador filtra el pool y «Quitar» saca el tema del pool y de
+      los juegos.
 - [ ] Persistencia: recargar la página → biblioteca y pool siguen cargados.
 - [ ] Persistencia con pool grande: importar «Me gusta» (miles de temas) →
-      «Añadir todo» → recargar → el pool sigue completo (contador «Lo que sé N»)
+      confirmar todo → recargar → el pool sigue completo (contador «Lo que sé N»)
       y los juegos sortean. En DevTools → Application → Local Storage,
       `deoido.v1.library` guarda cada álbum una sola vez (`tracks[id].albumId`,
       sin copia de portadas por tema) y solo los temas del pool.

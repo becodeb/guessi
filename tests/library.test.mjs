@@ -62,6 +62,39 @@ function makeTrack(i) {
   check("in-session: album map record keeps artists", library.getAlbums()[0].artists, ALBUM_ARTISTS);
 }
 
+// --- commitTracks: importing IS adding ---------------------------------------
+// The import sheet hands back only the tracks the user kept. They must land in
+// the pool directly — there is no pending step to walk through afterwards.
+
+{
+  const offered = [makeTrack(10), makeTrack(11), makeTrack(12)];
+  const result = library.commitTracks(offered, ["t10", "t12"]);
+  check("commit: added count", result.added, 2);
+  check("commit: nothing was already known", result.already, 0);
+  check("commit: kept tracks are in the pool", library.isInPool("t10") && library.isInPool("t12"), true);
+  check("commit: the unchecked track stayed out", library.isInPool("t11"), false);
+  check("commit: the unchecked track was not queued either", library.isPending("t11"), false);
+}
+
+// Re-committing the same source must not duplicate the pool or lie about it.
+{
+  const offered = [makeTrack(10), makeTrack(13)];
+  const before = library.getPoolCount();
+  const result = library.commitTracks(offered, ["t10", "t13"]);
+  check("recommit: only the new one counts as added", result.added, 1);
+  check("recommit: the known one is reported", result.already, 1);
+  check("recommit: pool grew by exactly one", library.getPoolCount(), before + 1);
+  check("recommit: no duplicate entry", library.getPool().filter((id) => id === "t10").length, 1);
+}
+
+// An empty selection is a no-op, not a crash or a silent full import.
+{
+  const before = library.getPoolCount();
+  const result = library.commitTracks([makeTrack(20), makeTrack(21)], []);
+  check("empty selection: nothing added", result.added, 0);
+  check("empty selection: pool untouched", library.getPoolCount(), before);
+}
+
 // --- summary -----------------------------------------------------------------
 console.log(`library.test.mjs: ${passed} assertions passed, ${failures.length} failed`);
 if (failures.length > 0) {

@@ -1,7 +1,8 @@
 // Spotify Web API client (design D8, library/playback specs).
 // Single fetch wrapper: 401 → silent refresh + retry once; 429 /
 // QUOTA_EXCEEDED → Retry-After backoff + rate-limit signal to the UI.
-// Paging always uses limit=50 and iterates next/offset until exhausted.
+// Paging always uses limit=50 and iterates next/offset until exhausted,
+// re-sending the SAME query on every page so the item shape never changes.
 // Removed endpoints (audio-features/analysis, recommendations,
 // related-artists) and /playlists/{id}/tracks are NEVER called.
 
@@ -35,8 +36,6 @@ function notifyRateLimited(retryAfterMs) {
   for (const cb of rateLimitedListeners) cb(retryAfterMs);
 }
 
-// Item shape used across playlist/liked/album-tracks paging.
-const ITEM_FIELDS = "id,name,artists(id,name),album(id,name,album_type,release_date,images,artists(id,name),total_tracks),duration_ms";
 const ALBUM_TRACK_FIELDS = "id,name,artists(id,name),duration_ms,track_number";
 
 async function request(path, { method = "GET", body, params, signal } = {}) {
@@ -124,8 +123,13 @@ export function apiFetch(path, opts = {}) {
   return request(path, opts);
 }
 
-/** Paginate a Spotify paging object via its `next`/`offset` links. */
-async function pageAll(firstPage, extractItems) {
+/**
+ * Paginate a Spotify paging object via its `next`/`offset` links.
+ * `params` is re-sent on every page: dropping `fields` (or `market`, or
+ * `additional_types`) halfway through changes the item shape between pages,
+ * which silently loses whole pages downstream.
+ */
+async function pageAll(firstPage, extractItems, params = {}) {
   const all = [];
   let page = firstPage;
   let guard = 0;
@@ -134,13 +138,49 @@ async function pageAll(firstPage, extractItems) {
     if (!page.next) break;
     const nextUrl = new URL(page.next);
     const offset = nextUrl.searchParams.get("offset");
-    const params = { limit: 50 };
-    if (offset !== null) params.offset = offset;
-    // Re-request the same resource path with the next offset (limit=50).
-    page = await request(`${nextUrl.pathname.replace("/v1", "")}`, { params });
+    const nextParams = { ...params, limit: 50 };
+    if (offset !== null) nextParams.offset = offset;
+    page = await request(nextUrl.pathname.replace(/^\/v1/, ""), { params: nextParams });
     guard++;
   }
   return all;
+}
+
+/**
+ * Unwrap one page of track rows into plain track objects.
+ * Spotify's February 2026 rename moved a playlist row's track under `item`
+ * (the legacy `track` key is still mirrored, and /me/tracks only has `track`).
+ * Rows with no usable track — episodes, local files, unavailable items — are
+ * counted as skipped so the UI can say so instead of quietly losing them.
+ * @param {object} page a paging object
+ * @returns {{tracks: object[], skipped: number}}
+ */
+export function unwrapTrackRows(page) {
+  const tracks = [];
+  let skipped = 0;
+  for (const row of page?.items ?? []) {
+    const track = row?.item ?? row?.track ?? row;
+    if (track?.id && (track.type ?? "track") === "track") tracks.push(track);
+    else skipped++;
+  }
+  return { tracks, skipped };
+}
+
+/** Track count of a playlist object, across the `tracks` → `items` rename. */
+export function playlistTrackTotal(playlist) {
+  return playlist?.items?.total ?? playlist?.tracks?.total ?? null;
+}
+
+/** Walk every page of a track listing, tallying what could not be imported. */
+async function pageAllTracks(path, params) {
+  const first = await request(path, { params });
+  let skipped = 0;
+  const tracks = await pageAll(first, (page) => {
+    const unwrapped = unwrapTrackRows(page);
+    skipped += unwrapped.skipped;
+    return unwrapped.tracks;
+  }, params);
+  return { tracks, total: first?.total ?? tracks.length + skipped, skipped };
 }
 
 // --- typed endpoints ---------------------------------------------------------
@@ -150,24 +190,19 @@ export async function getPlaylists() {
   return pageAll(first, (p) => (p.items ?? []).filter((pl) => pl?.id));
 }
 
-export async function getPlaylistItems(id) {
-  const first = await request(`/playlists/${id}/items`, {
-    params: { limit: 50, fields: `items(${ITEM_FIELDS}),next` },
-  });
-  // `/items` items carry `.item`; the older `.track` key is kept as a fallback.
-  const tracks = await pageAll(first, (p) =>
-    (p.items ?? []).map((it) => it.track ?? it.item ?? it).filter((t) => t && t.id)
-  );
-  return tracks;
+/**
+ * Every track in a playlist.
+ * No `fields` mask: /items nests the track under `item`, so a flat mask
+ * matches nothing and returns a page of empty rows.
+ * @returns {Promise<{tracks: object[], total: number, skipped: number}>}
+ */
+export function getPlaylistItems(id) {
+  return pageAllTracks(`/playlists/${id}/items`, { limit: 50, additional_types: "track" });
 }
 
-export async function getLikedTracks() {
-  const first = await request("/me/tracks", {
-    params: { limit: 50, fields: `items(track(${ITEM_FIELDS})),next` },
-  });
-  return pageAll(first, (p) =>
-    (p.items ?? []).map((it) => it.track ?? it).filter((t) => t && t.id)
-  );
+/** @returns {Promise<{tracks: object[], total: number, skipped: number}>} */
+export function getLikedTracks() {
+  return pageAllTracks("/me/tracks", { limit: 50 });
 }
 
 /**
@@ -207,8 +242,7 @@ export async function getAlbum(id) {
 
 /** Album tracklist, paged at 50 (albums/collections can exceed 50 tracks). */
 export async function getAlbumTracks(id) {
-  const first = await request(`/albums/${id}/tracks`, {
-    params: { limit: 50, fields: `items(${ALBUM_TRACK_FIELDS}),next` },
-  });
-  return pageAll(first, (p) => p.items ?? []);
+  const params = { limit: 50, fields: `items(${ALBUM_TRACK_FIELDS}),next` };
+  const first = await request(`/albums/${id}/tracks`, { params });
+  return pageAll(first, (p) => p.items ?? [], params);
 }

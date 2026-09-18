@@ -70,13 +70,54 @@ export function formatMs(ms) {
   return `${fixed} s`;
 }
 
-/** Inline SVG icon from the sprite (index.html). 24px, stroke 1.75. */
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * Inline SVG icon from the sprite (index.html). 24px, stroke 1.75.
+ * Built with createElementNS: `document.createElement("svg")` inside an HTML
+ * document produces an inert HTMLUnknownElement that never paints.
+ */
 export function icon(name, extraClass = "") {
-  return el("svg", {
-    class: `icon${extraClass ? ` ${extraClass}` : ""}`,
-    "aria-hidden": "true",
-    viewBox: "0 0 24 24",
-  }, el("use", { href: `#i-${name}` }));
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", `icon${extraClass ? ` ${extraClass}` : ""}`);
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+/**
+ * Open a modal <dialog>: native focus trap, Escape and backdrop dismissal.
+ * Resolves the returned `closed` promise once the dialog leaves the DOM, so
+ * callers can await the outcome they stored on `dialog.returnValue`.
+ * @param {{label: string, class?: string}} opts
+ * @param {...Node} children
+ * @returns {{dialog: HTMLDialogElement, close: (value?: string) => void, closed: Promise<string>}}
+ */
+export function openDialog({ label, class: extraClass = "" }, ...children) {
+  const dialog = el("dialog", {
+    class: `dialog${extraClass ? ` ${extraClass}` : ""}`,
+    "aria-label": label,
+  }, ...children);
+
+  // Clicking the backdrop lands on the dialog element itself, never a child.
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close("dismiss");
+  });
+
+  const closed = new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      const value = dialog.returnValue || "dismiss";
+      dialog.remove();
+      resolve(value);
+    }, { once: true });
+  });
+
+  document.body.append(dialog);
+  dialog.showModal();
+  return { dialog, close: (value = "dismiss") => dialog.close(value), closed };
 }
 
 /** Live region for guess feedback (aria-live). */
