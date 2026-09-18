@@ -4,7 +4,7 @@
 
 ### Requirement: Import Sources
 
-The system MUST import tracks from user playlists (`GET /me/playlists` then `GET /playlists/{id}/items` per playlist; the `/tracks` endpoint MUST NOT be used), liked songs (`GET /me/tracks`), search (`GET /search`), and pasted Spotify links. Paged endpoints MUST iterate via `next`/`offset` until exhausted, re-sending the caller's own query parameters — including its page size — on every page. `GET /search` MUST request at most `limit=10`. A playlist row MUST be read through its `item` key (with `track` as the legacy fallback), and rows that carry no importable track MUST be counted and reported, never silently dropped. An import MUST stage what it fetched for the user to confirm; nothing enters the library until they do.
+The system MUST import tracks from user playlists (`GET /me/playlists` then `GET /playlists/{id}/items` per playlist; the `/tracks` endpoint MUST NOT be used), liked songs (`GET /me/tracks`), most-played songs (`GET /me/top/tracks`, the supported stand-in for Spotify's own «Top songs» playlists), whole artists (`GET /artists/{id}/albums` then `GET /albums/{id}/tracks` per release; `/artists/{id}/top-tracks` was removed and MUST NOT be called), search (`GET /search`), and pasted Spotify links. Paged endpoints MUST iterate via `next`/`offset` until exhausted, re-sending the caller's own query parameters — including its page size — on every page. `GET /search` and `GET /artists/{id}/albums` MUST request at most `limit=10`. A playlist row MUST be read through its `item` key (with `track` as the legacy fallback), and rows that carry no importable track MUST be counted and reported, never silently dropped. An import MUST stage what it fetched for the user to confirm; nothing enters the library until they do.
 
 #### Scenario: Playlist import pages to completion
 
@@ -23,6 +23,18 @@ The system MUST import tracks from user playlists (`GET /me/playlists` then `GET
 - GIVEN an endpoint walked with `limit=10`
 - WHEN the walk follows `next` to the second page
 - THEN that request also carries `limit=10`
+
+#### Scenario: A whole artist collapses duplicate pressings
+
+- GIVEN a song released on an album and again as a single
+- WHEN the artist is imported
+- THEN the song is offered once, as its album cut
+
+#### Scenario: A missing scope is named, not retried
+
+- GIVEN a session opened before `user-top-read` was requested
+- WHEN the user asks for their most-played songs
+- THEN the app asks them to sign in again and offers no retry, and calls nothing
 
 #### Scenario: A playlist the user does not own is explained, not failed
 

@@ -485,6 +485,7 @@ function debounce(fn, ms) {
 }
 
 const KIND_LABEL = { track: "canción", album: "álbum", playlist: "playlist", artist: "artista" };
+const COVER_FALLBACK = { track: "note", album: "album", artist: "note", playlist: "list" };
 
 function artistsText(item) {
   return (item?.artists ?? []).map((a) => a?.name).filter(Boolean).join(", ");
@@ -684,7 +685,7 @@ function renderLibrary(view) {
     poolHost.innerHTML = "";
     const all = library.getPoolTracks();
     if (all.length === 0) {
-      poolHost.append(ui.el("p", { class: "muted-note", text: "Importa una playlist o un álbum y sus canciones aparecerán aquí." }));
+      poolHost.append(ui.el("p", { class: "muted-note", text: "Importa un artista, una playlist o un álbum y sus canciones aparecerán aquí." }));
       return;
     }
     const needle = match.normalize(poolFilter);
@@ -728,8 +729,8 @@ function renderLibrary(view) {
   const searchInput = ui.el("input", {
     class: "search-field__input",
     type: "search",
-    placeholder: "Busca canciones, álbumes o playlists…",
-    "aria-label": "Buscar canciones, álbumes o playlists",
+    placeholder: "Busca canciones, artistas, álbumes o playlists…",
+    "aria-label": "Buscar canciones, artistas, álbumes o playlists",
     autocomplete: "off",
     value: query,
   });
@@ -747,17 +748,21 @@ function renderLibrary(view) {
   const chipsHost = ui.el("div", { class: "search-chips", hidden: true });
   const resultsHost = ui.el("div", { class: "search-results" });
 
-  function showError(msg, err) {
+  /**
+   * @param {string} msg
+   * @param {Error} [err]
+   * @param {{retry?: boolean}} [opts] retry is off when trying again cannot
+   *   possibly help — a missing scope needs a new session, not another go.
+   */
+  function showError(msg, err, { retry = true } = {}) {
     errorHost.innerHTML = "";
     errorHost.append(ui.el("div", { class: "banner banner--error" },
       ui.icon("warn"),
       ui.el("div", { class: "banner__body" },
         ui.el("span", { text: err?.message === "Sesión expirada" ? "Vuelve a iniciar sesión." : msg }),
-        ui.el("button", {
-          class: "btn btn--sm",
-          text: "Reintentar",
-          on: { click: () => route() },
-        }),
+        retry
+          ? ui.el("button", { class: "btn btn--sm", text: "Reintentar", on: { click: () => route() } })
+          : null,
       ),
     ));
   }
@@ -776,16 +781,22 @@ function renderLibrary(view) {
       btn.disabled = true;
       btn.textContent = "Abriendo…";
     }
+    // A discography is one request per release, so it needs to count out loud.
+    const progress = ({ done, total }) => {
+      if (btn && total > 1) btn.textContent = `Disco ${Math.min(done + 1, total)} de ${total}…`;
+    };
     errorHost.innerHTML = "";
     try {
-      const preview = await load();
+      const preview = await load(progress);
       if (preview.tracks.length === 0) {
         ui.toast(`«${title}» no tiene canciones que se puedan importar.`, "info");
         return;
       }
       const result = await openImportDialog({
         title,
-        subtitle,
+        subtitle: preview.albumCount
+          ? `${subtitle} · ${preview.albumCount} ${preview.albumCount === 1 ? "disco" : "discos"}`
+          : subtitle,
         coverUrl,
         kind,
         tracks: preview.tracks,
@@ -810,16 +821,20 @@ function renderLibrary(view) {
     }
   }
 
+  function sourceSubtitle(kind, item) {
+    if (kind === "album") return [artistsText(item), yearOf(item)].filter(Boolean).join(" · ");
+    if (kind === "artist") return "Toda su discografía";
+    return `Playlist de ${item.owner?.display_name ?? "Spotify"}`;
+  }
+
   function importSource(kind, item, btn) {
     return stageImport({
       kind,
       id: item.id,
       title: item.name ?? "",
-      subtitle: kind === "album"
-        ? [artistsText(item), yearOf(item)].filter(Boolean).join(" · ")
-        : `Playlist de ${item.owner?.display_name ?? "Spotify"}`,
+      subtitle: sourceSubtitle(kind, item),
       coverUrl: coverUrl(item, kind),
-      load: () => library.previewRef({ type: kind, id: item.id }),
+      load: (onProgress) => library.previewRef({ type: kind, id: item.id }, onProgress),
     }, btn);
   }
 
@@ -838,6 +853,7 @@ function renderLibrary(view) {
           : null,
         ui.el("p", { text: "Las listas que arma Spotify —«This Is…», Descubrimiento semanal, las radios— y en general cualquier playlist que no sea tuya entregan solo el nombre y la portada. Es un límite de la API de Spotify, no de la app." }),
         ui.el("p", { class: "blocked-card__how", text: "Para jugarla: ábrela en Spotify, selecciona todas las canciones, botón derecho → «Añadir a otra lista» → una playlist tuya. Esa la importas entera desde aquí." }),
+        ui.el("p", { class: "muted-note", text: "Si era tu «Top canciones» del año, usa «Tus más escuchadas» aquí arriba: son las mismas, calculadas por Spotify para ti." }),
       ),
     );
   }
@@ -858,6 +874,12 @@ function renderLibrary(view) {
     return ui.el("div", { class: "media-grid" }, ...cards);
   }
 
+  function cardSubtitle(kind, item) {
+    if (kind === "album") return artistsText(item);
+    if (kind === "artist") return (item.genres ?? []).slice(0, 2).join(" · ") || "Artista";
+    return item.owner?.display_name ?? "Spotify";
+  }
+
   function mediaCard(kind, item, { owned = false } = {}) {
     const meta = [];
     if (owned) meta.push("Tuya");
@@ -865,17 +887,19 @@ function renderLibrary(view) {
       const year = yearOf(item);
       if (year) meta.push(year);
       if (item.total_tracks) meta.push(`${item.total_tracks} temas`);
+    } else if (kind === "artist") {
+      meta.push("Toda su discografía");
     } else {
       const count = playlistCountText(item);
       if (count) meta.push(count);
     }
     return ui.el("article", { class: "media-card" },
       ui.el("div", { class: "media-card__cover" },
-        coverEl(coverUrl(item, kind), "media-card__cover-img", kind === "album" ? "album" : "list")
+        coverEl(coverUrl(item, kind), "media-card__cover-img", COVER_FALLBACK[kind] ?? "list")
       ),
       ui.el("div", { class: "media-card__body" },
         ui.el("span", { class: "media-card__title", text: item.name ?? "" }),
-        ui.el("span", { class: "media-card__sub", text: kind === "album" ? artistsText(item) : (item.owner?.display_name ?? "Spotify") }),
+        ui.el("span", { class: "media-card__sub", text: cardSubtitle(kind, item) }),
         ui.el("span", { class: "media-card__meta", text: meta.join(" · ") }),
       ),
       ui.el("div", { class: "media-card__actions" },
@@ -923,16 +947,14 @@ function renderLibrary(view) {
     const kind = ref.type;
     if (kind === "playlist" && blocked) return blockedPlaylistCard(item);
 
-    const supported = kind !== "artist";
     let sub = "";
     if (kind === "track") sub = `${artistsText(item)} · ${item.album?.name ?? ""}`;
     else if (kind === "album") sub = [artistsText(item), yearOf(item), item.total_tracks ? `${item.total_tracks} temas` : ""].filter(Boolean).join(" · ");
+    else if (kind === "artist") sub = [(item.genres ?? []).slice(0, 2).join(" · "), "toda su discografía"].filter(Boolean).join(" · ");
     else if (kind === "playlist") sub = [item.owner?.display_name ?? "Spotify", playlistCountText(item)].filter(Boolean).join(" · ");
 
     let action;
-    if (!supported) {
-      action = ui.el("button", { class: "btn", type: "button", disabled: true, text: "No disponible" });
-    } else if (kind === "track" && library.isInPool(item.id)) {
+    if (kind === "track" && library.isInPool(item.id)) {
       action = ui.el("span", { class: "chip chip--ok" }, ui.el("span", { class: "dot" }), ui.el("span", { text: "Ya la sabes" }));
     } else if (kind === "track") {
       action = ui.el("button", {
@@ -951,7 +973,7 @@ function renderLibrary(view) {
     }
 
     return ui.el("div", { class: "link-result" },
-      coverEl(coverUrl(item, kind), "link-result__cover", kind === "playlist" ? "list" : "album"),
+      coverEl(coverUrl(item, kind), "link-result__cover", COVER_FALLBACK[kind] ?? "album"),
       ui.el("div", { class: "link-result__body" },
         ui.el("span", { class: "chip chip--ok" },
           ui.icon("link"),
@@ -959,9 +981,6 @@ function renderLibrary(view) {
         ),
         ui.el("h3", { class: "link-result__title", text: item.name ?? "" }),
         ui.el("p", { class: "muted-note", text: sub }),
-        supported
-          ? null
-          : ui.el("p", { class: "muted-note", text: "Spotify ya no permite traer las canciones de un artista: importa un álbum o una playlist." }),
       ),
       action,
     );
@@ -976,7 +995,7 @@ function renderLibrary(view) {
     }
     return ui.el("div", { class: "results__empty" },
       ui.el("p", { text: `Sin resultados para «${query.trim()}».` }),
-      ui.el("p", { class: "muted-note", text: "Prueba con otro nombre o pega un enlace de Spotify (canción, álbum o playlist)." }),
+      ui.el("p", { class: "muted-note", text: "Prueba con otro nombre o pega un enlace de Spotify (canción, artista, álbum o playlist)." }),
     );
   }
 
@@ -1008,12 +1027,14 @@ function renderLibrary(view) {
   function renderCatalog(data) {
     const showTracks = filter === "all" || filter === "tracks";
     const showAlbums = filter === "all" || filter === "albums";
+    const showArtists = filter === "all" || filter === "artists";
     const showPlaylists = filter === "all" || filter === "playlists";
     const tracks = showTracks ? data.tracks : [];
     const albums = showAlbums ? data.albums : [];
+    const artists = showArtists ? data.artists : [];
     const own = showPlaylists ? data.own : [];
     const lists = showPlaylists ? data.playlists : [];
-    if (tracks.length + albums.length + own.length + lists.length === 0) {
+    if (tracks.length + albums.length + artists.length + own.length + lists.length === 0) {
       resultsHost.replaceChildren(emptyState());
       return;
     }
@@ -1025,6 +1046,10 @@ function renderLibrary(view) {
     if (tracks.length > 0) {
       kids.push(sectionHead("Canciones", tracks.length));
       kids.push(trackList(tracks));
+    }
+    if (artists.length > 0) {
+      kids.push(sectionHead("Artistas", artists.length));
+      kids.push(mediaGrid(artists.map((a) => mediaCard("artist", a))));
     }
     if (albums.length > 0) {
       kids.push(sectionHead("Álbumes", albums.length));
@@ -1039,7 +1064,9 @@ function renderLibrary(view) {
 
   function renderChips() {
     const data = results?.kind === "catalog" ? results : null;
-    const total = data ? data.tracks.length + data.albums.length + data.playlists.length + data.own.length : 0;
+    const total = data
+      ? data.tracks.length + data.albums.length + data.artists.length + data.playlists.length + data.own.length
+      : 0;
     if (!data || total === 0) {
       chipsHost.hidden = true;
       chipsHost.replaceChildren();
@@ -1048,10 +1075,17 @@ function renderLibrary(view) {
     const chipCounts = {
       all: total,
       tracks: data.tracks.length,
+      artists: data.artists.length,
       albums: data.albums.length,
       playlists: data.playlists.length + data.own.length,
     };
-    const defs = [["all", "Todo"], ["tracks", "Canciones"], ["albums", "Álbumes"], ["playlists", "Playlists"]];
+    const defs = [
+      ["all", "Todo"],
+      ["tracks", "Canciones"],
+      ["artists", "Artistas"],
+      ["albums", "Álbumes"],
+      ["playlists", "Playlists"],
+    ];
     chipsHost.hidden = false;
     chipsHost.replaceChildren(
       ...defs.map(([value, label]) =>
@@ -1192,6 +1226,58 @@ function renderLibrary(view) {
   });
   clearBtn.addEventListener("click", clearSearch);
 
+  const TOP_RANGES = [
+    ["long_term", "de siempre"],
+    ["medium_term", "de los últimos 6 meses"],
+    ["short_term", "de las últimas 4 semanas"],
+  ];
+
+  /**
+   * The two sources that are not a search: saved songs and most-played.
+   * Most-played is here because Spotify's own «Top canciones 20XX» playlist
+   * is owned by Spotify and hands over no tracks — this is the same music by
+   * the only route the API still allows.
+   */
+  function shortcutsRow() {
+    const rangeSelect = ui.el("select", { class: "select select--sm", "aria-label": "Periodo de tus más escuchadas" },
+      ...TOP_RANGES.map(([value, label]) => ui.el("option", { value, text: label })),
+    );
+
+    const topBtn = ui.el("button", { class: "btn", type: "button" }, ui.icon("plus"), "Tus más escuchadas");
+    topBtn.addEventListener("click", (e) => {
+      if (!auth.hasScope("user-top-read")) {
+        showError("Para traer tus más escuchadas hace falta un permiso nuevo. Cierra sesión y vuelve a entrar: Spotify te lo pedirá una sola vez.", null, { retry: false });
+        return;
+      }
+      const range = rangeSelect.value;
+      const label = TOP_RANGES.find(([value]) => value === range)?.[1] ?? "";
+      stageImport({
+        kind: "top",
+        id: `top:${range}`,
+        title: "Tus más escuchadas",
+        subtitle: `Lo que más sonó ${label}`,
+        load: () => library.previewTopTracks(range),
+      }, e.currentTarget);
+    });
+
+    return ui.el("div", { class: "lib-shortcuts" },
+      ui.el("button", {
+        class: "btn",
+        type: "button",
+        on: {
+          click: (e) => stageImport({
+            kind: "liked",
+            id: "liked",
+            title: "Me gusta",
+            subtitle: "Tus canciones guardadas en Spotify",
+            load: () => library.previewLiked(),
+          }, e.currentTarget),
+        },
+      }, ui.icon("plus"), "Me gusta"),
+      ui.el("div", { class: "lib-shortcuts__group" }, topBtn, rangeSelect),
+    );
+  }
+
   const poolFilterInput = ui.el("input", {
     class: "pool-panel__filter",
     type: "search",
@@ -1240,23 +1326,9 @@ function renderLibrary(view) {
     ),
     ui.el("div", { class: "lib-layout" },
       ui.el("div", { class: "card stack lib-find" },
-        ui.el("div", { class: "lib-find__bar" },
-          searchField,
-          ui.el("button", {
-            class: "btn lib-find__liked",
-            type: "button",
-            on: {
-              click: (e) => stageImport({
-                kind: "liked",
-                id: "liked",
-                title: "Me gusta",
-                subtitle: "Tus canciones guardadas en Spotify",
-                load: () => library.previewLiked(),
-              }, e.currentTarget),
-            },
-          }, ui.icon("plus"), "Me gusta"),
-        ),
-        ui.el("p", { class: "search-hint", text: "Busca por nombre o pega un enlace de Spotify (canción, álbum o playlist)." }),
+        searchField,
+        ui.el("p", { class: "search-hint", text: "Busca por nombre o pega un enlace de Spotify. Un artista entero trae toda su discografía." }),
+        shortcutsRow(),
         errorHost,
         chipsHost,
         resultsHost,

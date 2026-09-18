@@ -12,7 +12,7 @@ abierta (DevTools) y los pasos exactos.
 - [ ] `src/config.js` tiene el Client ID real (no `REPLACE_ME`) y el login
       muestra el botón «Iniciar sesión con Spotify».
 - [ ] Primer login: redirige a accounts.spotify.com con `response_type=code`,
-      `code_challenge_method=S256`, `state` y los **8 scopes** exactos
+      `code_challenge_method=S256`, `state` y los **9 scopes** exactos
       (verificar en la URL de authorize o en la consola de la app).
 - [ ] Vuelve a `http://127.0.0.1:8080/` con `code` + `state`; la app cambia el
       hash a `#/library`, la URL queda limpia (sin `code`/`state`) y aparece el
@@ -46,27 +46,36 @@ abierta (DevTools) y los pasos exactos.
 - [ ] Reimportar la misma playlist: las canciones que ya sabés salen marcadas
       «Ya la sabes» y no se pueden tildar; si están todas, la ventana lo dice y
       solo ofrece «Cerrar».
-- [ ] «Me gusta»: el botón junto al buscador abre la misma ventana con tus
-      canciones guardadas.
+- [ ] «Me gusta»: el botón de atajos abre la misma ventana con tus canciones
+      guardadas.
+- [ ] «Tus más escuchadas»: el botón trae `/me/top/tracks` con el periodo del
+      selector («de siempre» / 6 meses / 4 semanas). Es el reemplazo de la
+      «Top canciones 20XX» de Spotify, que la API no entrega.
+- [ ] Sesión vieja sin `user-top-read`: el botón NO llama a la API, muestra el
+      aviso de cerrar sesión y volver a entrar, y ese aviso no trae
+      «Reintentar» (reintentar no arreglaría nada).
 - [ ] Búsqueda en vivo: escribir ≥2 letras busca en Spotify y agrupa
-      Canciones / Álbumes / Playlists de Spotify, con imágenes; los chips
-      «Todo · N» filtran por tipo. «Añadir» manda el tema derecho a «Lo que sé»
-      (queda el chip «Ya la sabes»), «Importar» abre la ventana del álbum o la
-      playlist completa.
+      Canciones / Artistas / Álbumes / Playlists de Spotify, con imágenes; los
+      chips «Todo · N» filtran por tipo. «Añadir» manda el tema derecho a «Lo
+      que sé» (queda el chip «Ya la sabes»), «Importar» abre la ventana del
+      álbum, del artista o de la playlist completa.
+- [ ] Límite de búsqueda: en DevTools, `/search` debe pedir `limit=10` (desde
+      febrero de 2026 el máximo es 10; con 12 Spotify rechaza o recorta).
+- [ ] Artista entero: «Importar» en una tarjeta de artista → el botón cuenta
+      «Disco N de M…» mientras barre, y la ventana abre con toda la
+      discografía. Verificar que `/artists/{id}/albums` pide `limit=10` en
+      **todas** las páginas (no 10 en la primera y 50 en la segunda) y que un
+      tema que salió en álbum y en single aparece **una sola vez**.
+- [ ] Playlist que no es tuya: pegar el enlace de un «This Is…» → aparece la
+      tarjeta «Spotify no comparte las canciones de esta lista» con la salida
+      (copiarla a una playlist propia), no un error rojo ni «no pudimos leer
+      ese enlace».
 - [ ] Enlace pegado: pegar una URL o URI de Spotify (canción, álbum o
       playlist) → aparece la tarjeta «Enlace de … detectado» con portada y
       «Importar». Una playlist privada de la cuenta (p. ej. «Top canciones
       2025») funciona por enlace aunque no aparezca en el catálogo.
 - [ ] Enlace inválido o acortado (`spotify.link/…`, id truncado) → mensaje
       «No pudimos leer ese enlace», sin errores en consola.
-- [ ] Playlist que no es tuya: pegar el enlace de un «This Is…» → aparece la
-      tarjeta «Spotify no comparte las canciones de esta lista» con la salida
-      (copiarla a una playlist propia), no un error rojo ni «no pudimos leer
-      ese enlace».
-- [ ] Límite de búsqueda: en DevTools, `/search` debe pedir `limit=10` (desde
-      febrero de 2026 el máximo es 10; con 12 Spotify rechaza o recorta).
-- [ ] Paginación: cualquier recorrido con `next` debe repetir el MISMO `limit`
-      en todas las páginas (no 10 en la primera y 50 en la segunda).
 - [ ] Dentro de la ventana: «Todas» / «Ninguna» y el filtro de texto actúan
       solo sobre las filas visibles; el contador y el botón «Añadir N
       canciones» siguen la selección y se deshabilitan en cero.

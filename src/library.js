@@ -5,6 +5,7 @@
 
 import * as storage from "./storage.js";
 import * as api from "./spotify-api.js";
+import * as match from "./match.js";
 
 /**
  * Thrown when Spotify hands over a playlist's name but not its songs.
@@ -167,8 +168,9 @@ export async function importTrack(id) {
  * @param {{type: string, id: string}} ref
  * @returns {Promise<{tracks: object[], total: number, skipped: number, album?: object, rawTracks?: object[]}>}
  */
-export async function previewRef({ type, id }) {
+export async function previewRef({ type, id }, onProgress) {
   if (type === "playlist") return previewPlaylist(id);
+  if (type === "artist") return previewArtist(id, onProgress);
   if (type === "album") {
     const [album, tracks] = await Promise.all([api.getAlbum(id), api.getAlbumTracks(id)]);
     const full = tracks.map((t) => ({ ...t, album }));
@@ -216,9 +218,64 @@ async function previewPlaylist(id) {
   return { ...page, total: page.total || declared || page.tracks.length };
 }
 
+/**
+ * Release order for a discography sweep: studio albums first, then
+ * compilations, then singles and EPs; oldest first inside each group.
+ * The dedupe below keeps whichever pressing it meets first, so this ordering
+ * is what makes the album cut win over the single.
+ */
+function releaseRank(album) {
+  const kind = album?.album_group ?? album?.album_type ?? "";
+  if (kind === "album") return 0;
+  if (kind === "compilation") return 1;
+  return 2;
+}
+
+function byRelease(a, b) {
+  const rank = releaseRank(a) - releaseRank(b);
+  if (rank !== 0) return rank;
+  return String(a?.release_date ?? "").localeCompare(String(b?.release_date ?? ""));
+}
+
+/**
+ * Every song an artist released, walked album by album.
+ * Spotify has no "all tracks by artist" endpoint and the batch album endpoint
+ * was removed in February 2026, so this costs one request per release — hence
+ * the progress callback, because a long discography is a visibly slow import.
+ * @param {string} id
+ * @param {(p: {done: number, total: number}) => void} [onProgress]
+ */
+async function previewArtist(id, onProgress) {
+  const [artist, albums] = await Promise.all([api.getArtist(id), api.getArtistAlbums(id)]);
+  const ordered = [...albums].sort(byRelease);
+  const tracks = [];
+  const seen = new Set();
+  let done = 0;
+  onProgress?.({ done, total: ordered.length });
+  for (const album of ordered) {
+    for (const track of await api.getAlbumTracks(album.id)) {
+      // One hit ships on the album, on its own single and on the deluxe
+      // edition, each with a different track id. Keep one.
+      const credits = (track?.artists ?? []).map((a) => a.id).sort().join(",");
+      const key = `${match.normalize(track?.name)}|${credits}`;
+      if (!track?.id || seen.has(key)) continue;
+      seen.add(key);
+      tracks.push({ ...track, album });
+    }
+    done++;
+    onProgress?.({ done, total: ordered.length });
+  }
+  return { tracks, total: tracks.length, skipped: 0, artist, albumCount: ordered.length };
+}
+
 /** Liked songs, staged the same way as a reference. */
 export function previewLiked() {
   return api.getLikedTracks();
+}
+
+/** Most-played songs, staged the same way as a reference. */
+export function previewTopTracks(timeRange) {
+  return api.getTopTracks(timeRange);
 }
 
 /**
@@ -275,7 +332,7 @@ export async function resolveRef({ type, id }) {
   return null;
 }
 
-/** Import whatever a parsed Spotify link points at (artists are read-only). */
+/** Import whatever a parsed Spotify link points at. */
 export async function importRef({ type, id }) {
   if (type === "album") return importAlbum(id);
   if (type === "playlist") return importFromPlaylist(id);

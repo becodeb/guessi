@@ -8,7 +8,9 @@ export const CLIENT_ID = "11bf3136b0db49b5b62106357599deb4";
 // "localhost") and `https://guessi.becode.com.ar/` in production.
 export const REDIRECT_URI = `${window.location.origin}/`;
 
-// Exact 8 scopes required by the change (streaming + library read + playback).
+// Scopes: streaming + library read + playback, plus user-top-read, which is
+// the only supported way to reach "your top songs" — Spotify's own Wrapped
+// playlists are owned by Spotify and hand over no tracks.
 export const SCOPES = [
   "streaming",
   "user-read-email",
@@ -18,6 +20,7 @@ export const SCOPES = [
   "playlist-read-private",
   "playlist-read-collaborative",
   "user-library-read",
+  "user-top-read",
 ];
 
 export const SDK_URL = "https://sdk.scdn.co/spotify-player.js";

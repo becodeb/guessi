@@ -183,6 +183,16 @@ export async function getAccessToken() {
   return storage.loadTokens()?.access_token ?? null;
 }
 
+/**
+ * Whether the stored session was granted a scope.
+ * A session opened before a scope was added keeps working for everything
+ * else, so the view asks this instead of waiting for a 403.
+ * @param {string} scope
+ */
+export function hasScope(scope) {
+  return (storage.loadTokens()?.scopes ?? []).includes(scope);
+}
+
 export function isAuthenticated() {
   return Boolean(storage.loadTokens()?.access_token);
 }

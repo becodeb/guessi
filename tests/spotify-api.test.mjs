@@ -98,8 +98,8 @@ const track = (id) => ({ id, name: `Canción ${id}`, type: "track", artists: [],
 }
 
 // --- paging keeps the caller's own page size ---------------------------------
-// /search caps `limit` at 10 since February 2026, so a walk that starts at 10
-// and jumps to 50 on page two is a 400 in waiting.
+// /search and /artists/{id}/albums cap `limit` at 10 since February 2026, so a
+// walk that starts at 10 and jumps to 50 on page two is a 400 in waiting.
 
 {
   const params = { limit: 10, include_groups: "album,single" };

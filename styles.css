@@ -1075,29 +1075,31 @@ button {
   }
 }
 
-.lib-find__bar {
+/* The sources that are not a search: saved songs and most-played. */
+.lib-shortcuts {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  align-items: stretch;
+  align-items: center;
 }
 
-.lib-find__bar .search-field {
-  flex: 1;
-  min-width: 0;
+/* Button and period read as one control. */
+.lib-shortcuts__group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
-.lib-find__liked {
-  flex: none;
-  white-space: nowrap;
-}
 
 @media (max-width: 560px) {
-  .lib-find__bar {
-    flex-wrap: wrap;
+  .lib-shortcuts,
+  .lib-shortcuts__group {
+    width: 100%;
   }
 
-  .lib-find__liked {
-    width: 100%;
+  .lib-shortcuts .btn,
+  .lib-shortcuts__group .btn {
+    flex: 1;
     justify-content: center;
   }
 }
@@ -1984,6 +1986,12 @@ button {
   color: var(--text);
   font-family: var(--font-text);
   font-size: 0.95rem;
+}
+
+.select--sm {
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 0.9rem;
 }
 
 /* --------------------------------------------------------------------------

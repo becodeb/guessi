@@ -64,17 +64,27 @@ Un modo principal y tres de práctica suelta:
    ```
 
 4. Abrí **http://127.0.0.1:8080/** e iniciá sesión con Spotify.
-5. En **Biblioteca**, buscá canciones, álbumes o playlists (incluidas tus
-   playlists privadas, que aparecen al abrir la vista), o pegá un enlace de
+5. En **Biblioteca**, buscá canciones, artistas, álbumes o playlists (incluidas
+   tus playlists privadas, que aparecen al abrir la vista), o pegá un enlace de
    Spotify. «Importar» abre una ventana con la lista completa, ya tildada:
    destildá lo que no quieras, confirmá y esas canciones entran derecho a
-   **«Lo que sé»**, que es lo que suena en los juegos.
+   **«Lo que sé»**, que es lo que suena en los juegos. Importar un **artista**
+   barre toda su discografía (un pedido por disco) y deja una sola copia de
+   cada tema, aunque salga en el álbum y en el single.
+
+6. Los dos atajos debajo del buscador traen **«Me gusta»** (tus canciones
+   guardadas) y **«Tus más escuchadas»** (`/me/top/tracks`, con el periodo a
+   elección). Ese segundo es el reemplazo de la «Top canciones 20XX» que arma
+   Spotify.
 
 > **Lo que Spotify no deja importar.** Desde febrero de 2026, una playlist que
 > no sea tuya devuelve solo nombre y portada — y «no tuya» incluye las que
 > Spotify arma *para vos*: «This Is…», Descubrimiento semanal, «Top canciones
-> 20XX», radios. La app lo dice en lugar de fallar, y propone la salida:
-> copiá esas canciones a una playlist tuya en Spotify e importá esa.
+> 20XX», radios. Ninguna se puede traer. La app lo dice en lugar de fallar, y
+> ofrece las dos salidas: copiá esas canciones a una playlist tuya en Spotify
+> e importá esa, o usá «Tus más escuchadas», que sale del mismo cálculo de
+> Spotify por un endpoint que sí está abierto. Tampoco existe ya
+> `/artists/{id}/top-tracks`, por eso el artista se importa disco por disco.
 
 ## Deploy en Coolify
 

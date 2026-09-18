@@ -2,9 +2,9 @@
 // Single fetch wrapper: 401 → silent refresh + retry once; 429 /
 // QUOTA_EXCEEDED → Retry-After backoff + rate-limit signal to the UI.
 // Paging iterates next/offset until exhausted, re-sending the caller's OWN
-// query on every page: the page size is per-endpoint (Spotify caps /search at
-// 10 since February 2026) and the item shape depends on it, so no page may
-// invent its own parameters.
+// query on every page: the page size is per-endpoint (Spotify caps /search
+// and /artists/{id}/albums at 10 since February 2026) and the item shape
+// depends on it, so no page may invent its own parameters.
 // Removed endpoints (audio-features/analysis, recommendations,
 // related-artists) and /playlists/{id}/tracks are NEVER called.
 
@@ -222,24 +222,35 @@ export function getLikedTracks() {
   return pageAllTracks("/me/tracks", { limit: 50 });
 }
 
+/**
+ * The user's most-played songs — what Spotify's own «Top canciones» playlist
+ * is built from. That playlist is owned by Spotify and returns no tracks, so
+ * this endpoint is the only way in.
+ * @param {"short_term"|"medium_term"|"long_term"} timeRange
+ */
+export function getTopTracks(timeRange = "long_term") {
+  return pageAllTracks("/me/top/tracks", { limit: 50, time_range: timeRange });
+}
+
 // /search caps `limit` at 10 since February 2026 (it used to allow 50).
 const SEARCH_LIMIT = 10;
 
 /**
- * Unified catalog search: tracks + albums + playlists in one round trip.
- * Null entries (Spotify returns them for unavailable items) are dropped so
- * views can render the groups without defensive checks.
+ * Unified catalog search: tracks + albums + artists + playlists in one round
+ * trip. Null entries (Spotify returns them for unavailable items) are dropped
+ * so views can render the groups without defensive checks.
  * @param {string} query
  * @param {AbortSignal} [signal] caller-owned, to cancel superseded searches
  */
 export async function searchCatalog(query, signal) {
   const data = await request("/search", {
-    params: { type: "track,album,playlist", limit: SEARCH_LIMIT, q: query },
+    params: { type: "track,album,artist,playlist", limit: SEARCH_LIMIT, q: query },
     signal,
   });
   return {
     tracks: (data.tracks?.items ?? []).filter((t) => t?.id),
     albums: (data.albums?.items ?? []).filter((a) => a?.id),
+    artists: (data.artists?.items ?? []).filter((a) => a?.id),
     playlists: (data.playlists?.items ?? []).filter((p) => p?.id),
   };
 }
@@ -258,6 +269,19 @@ export async function getArtist(id) {
 
 export async function getAlbum(id) {
   return request(`/albums/${id}`);
+}
+
+/**
+ * An artist's releases, newest pages first, paged to exhaustion.
+ * `limit=10` is deliberate: the February 2026 cap for this endpoint is 10 and
+ * the pre-2026 cap was 50, so 10 is the only value valid under both.
+ * @param {string} id
+ * @param {string} [includeGroups] release kinds, comma-separated
+ */
+export async function getArtistAlbums(id, includeGroups = "album,single") {
+  const params = { limit: 10, include_groups: includeGroups };
+  const first = await request(`/artists/${id}/albums`, { params });
+  return pageAll(first, (p) => (p.items ?? []).filter((a) => a?.id), params);
 }
 
 /** Album tracklist, paged at 50 (albums/collections can exceed 50 tracks). */
