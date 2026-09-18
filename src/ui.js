@@ -181,5 +181,21 @@ export function volumeControl(ctx) {
       },
     },
   });
+
+  // The SDK connects asynchronously, so a view rendered before the device
+  // exists was born disabled and stayed that way for good. Re-enable on the
+  // ready signal instead. The control has no unmount hook, so the listener
+  // retires itself once its input leaves the document (every redraw, and
+  // every "Otra canción", builds a fresh one).
+  if (input.disabled) {
+    const off = ctx.player.onReady(() => {
+      if (!input.isConnected) {
+        off();
+        return;
+      }
+      input.disabled = !ctx.player.isReady();
+    });
+  }
+
   return el("div", { class: "volume" }, icon("volume"), input, readout);
 }
