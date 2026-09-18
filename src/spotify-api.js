@@ -1,8 +1,10 @@
 // Spotify Web API client (design D8, library/playback specs).
 // Single fetch wrapper: 401 → silent refresh + retry once; 429 /
 // QUOTA_EXCEEDED → Retry-After backoff + rate-limit signal to the UI.
-// Paging always uses limit=50 and iterates next/offset until exhausted,
-// re-sending the SAME query on every page so the item shape never changes.
+// Paging iterates next/offset until exhausted, re-sending the caller's OWN
+// query on every page: the page size is per-endpoint (Spotify caps /search at
+// 10 since February 2026) and the item shape depends on it, so no page may
+// invent its own parameters.
 // Removed endpoints (audio-features/analysis, recommendations,
 // related-artists) and /playlists/{id}/tracks are NEVER called.
 
@@ -137,13 +139,27 @@ async function pageAll(firstPage, extractItems, params = {}) {
     for (const item of extractItems(page)) all.push(item);
     if (!page.next) break;
     const nextUrl = new URL(page.next);
-    const offset = nextUrl.searchParams.get("offset");
-    const nextParams = { ...params, limit: 50 };
-    if (offset !== null) nextParams.offset = offset;
-    page = await request(nextUrl.pathname.replace(/^\/v1/, ""), { params: nextParams });
+    page = await request(nextUrl.pathname.replace(/^\/v1/, ""), {
+      params: nextPageParams(params, nextUrl),
+    });
     guard++;
   }
   return all;
+}
+
+/**
+ * The query for the next page: the caller's own parameters plus the offset
+ * Spotify handed back. Never substitutes a page size — a walk that asks for
+ * `limit=10` on page one and `limit=50` on page two is a 400 (or a silently
+ * different item shape) waiting to happen.
+ * @param {object} params the parameters the first page was requested with
+ * @param {URL} nextUrl the paging object's `next` link
+ */
+export function nextPageParams(params, nextUrl) {
+  const next = { ...params };
+  const offset = nextUrl?.searchParams?.get("offset");
+  if (offset !== null && offset !== undefined) next.offset = offset;
+  return next;
 }
 
 /**
@@ -186,8 +202,9 @@ async function pageAllTracks(path, params) {
 // --- typed endpoints ---------------------------------------------------------
 
 export async function getPlaylists() {
-  const first = await request("/me/playlists", { params: { limit: 50 } });
-  return pageAll(first, (p) => (p.items ?? []).filter((pl) => pl?.id));
+  const params = { limit: 50 };
+  const first = await request("/me/playlists", { params });
+  return pageAll(first, (p) => (p.items ?? []).filter((pl) => pl?.id), params);
 }
 
 /**
@@ -205,6 +222,9 @@ export function getLikedTracks() {
   return pageAllTracks("/me/tracks", { limit: 50 });
 }
 
+// /search caps `limit` at 10 since February 2026 (it used to allow 50).
+const SEARCH_LIMIT = 10;
+
 /**
  * Unified catalog search: tracks + albums + playlists in one round trip.
  * Null entries (Spotify returns them for unavailable items) are dropped so
@@ -214,7 +234,7 @@ export function getLikedTracks() {
  */
 export async function searchCatalog(query, signal) {
   const data = await request("/search", {
-    params: { type: "track,album,playlist", limit: 12, q: query },
+    params: { type: "track,album,playlist", limit: SEARCH_LIMIT, q: query },
     signal,
   });
   return {

@@ -4,7 +4,7 @@
 
 ### Requirement: Import Sources
 
-The system MUST import tracks from user playlists (`GET /me/playlists` then `GET /playlists/{id}/items` per playlist; the `/tracks` endpoint MUST NOT be used), liked songs (`GET /me/tracks`), search (`GET /search`), and pasted Spotify links. Paged endpoints MUST request `limit=50` and iterate via `next`/`offset` until exhausted, re-sending the same query parameters on every page. A playlist row MUST be read through its `item` key (with `track` as the legacy fallback), and rows that carry no importable track MUST be counted and reported, never silently dropped. An import MUST stage what it fetched for the user to confirm; nothing enters the library until they do.
+The system MUST import tracks from user playlists (`GET /me/playlists` then `GET /playlists/{id}/items` per playlist; the `/tracks` endpoint MUST NOT be used), liked songs (`GET /me/tracks`), search (`GET /search`), and pasted Spotify links. Paged endpoints MUST iterate via `next`/`offset` until exhausted, re-sending the caller's own query parameters — including its page size — on every page. `GET /search` MUST request at most `limit=10`. A playlist row MUST be read through its `item` key (with `track` as the legacy fallback), and rows that carry no importable track MUST be counted and reported, never silently dropped. An import MUST stage what it fetched for the user to confirm; nothing enters the library until they do.
 
 #### Scenario: Playlist import pages to completion
 
@@ -17,6 +17,18 @@ The system MUST import tracks from user playlists (`GET /me/playlists` then `GET
 - GIVEN a page of `/playlists/{id}/items` whose rows nest the track under `item`
 - WHEN the app reads the page
 - THEN every row yields its track, and a `fields` mask that would flatten the row MUST NOT be sent
+
+#### Scenario: Every page asks for the same page size
+
+- GIVEN an endpoint walked with `limit=10`
+- WHEN the walk follows `next` to the second page
+- THEN that request also carries `limit=10`
+
+#### Scenario: A playlist the user does not own is explained, not failed
+
+- GIVEN a Spotify-made playlist that returns metadata without items
+- WHEN the user pastes its link or imports it
+- THEN the app states that Spotify withholds the songs and names the workaround
 
 #### Scenario: Search import
 

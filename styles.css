@@ -1579,6 +1579,64 @@ button {
 }
 
 /* --------------------------------------------------------------------------
+   Blocked playlist: Spotify gave us the name but not the songs
+   -------------------------------------------------------------------------- */
+
+.blocked-card {
+  display: flex;
+  gap: var(--gap);
+  align-items: flex-start;
+  padding: var(--gap);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.blocked-card__cover {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  border-radius: var(--radius-cover);
+  object-fit: cover;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.blocked-card__cover--fallback {
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+
+.blocked-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 70ch;
+}
+
+.blocked-card__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+/* The way out lives in Spotify, not here — give it its own weight. */
+.blocked-card__how {
+  padding: 10px 12px;
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 620px) {
+  .blocked-card {
+    flex-direction: column;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Import sheet: the modal where a source becomes songs you know
    -------------------------------------------------------------------------- */
 

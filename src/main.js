@@ -799,7 +799,8 @@ function renderLibrary(view) {
         ui.toast(`${result.added} ${songWord(result.added)} en «Lo que sé».`, "success");
       }
     } catch (err) {
-      showError("No se pudo abrir esa lista. ", err);
+      if (err?.name === "UnreadablePlaylistError") showBlockedPlaylist(err.playlist ?? { name: title });
+      else showError("No se pudo abrir esa lista. ", err);
     } finally {
       importing = false;
       if (btn) {
@@ -820,6 +821,29 @@ function renderLibrary(view) {
       coverUrl: coverUrl(item, kind),
       load: () => library.previewRef({ type: kind, id: item.id }),
     }, btn);
+  }
+
+  /**
+   * What to show when Spotify hands over a playlist's name but not its songs.
+   * Naming the cause matters here: the app looks broken otherwise, and the
+   * way out is a thing the user does in Spotify, not in this app.
+   */
+  function blockedPlaylistCard(playlist) {
+    return ui.el("div", { class: "blocked-card" },
+      coverEl(playlist?.images?.[0]?.url, "blocked-card__cover", "list"),
+      ui.el("div", { class: "blocked-card__body" },
+        ui.el("h3", { class: "blocked-card__title", text: "Spotify no comparte las canciones de esta lista" }),
+        playlist?.name
+          ? ui.el("p", { class: "muted-note", text: `«${playlist.name}»` })
+          : null,
+        ui.el("p", { text: "Las listas que arma Spotify —«This Is…», Descubrimiento semanal, las radios— y en general cualquier playlist que no sea tuya entregan solo el nombre y la portada. Es un límite de la API de Spotify, no de la app." }),
+        ui.el("p", { class: "blocked-card__how", text: "Para jugarla: ábrela en Spotify, selecciona todas las canciones, botón derecho → «Añadir a otra lista» → una playlist tuya. Esa la importas entera desde aquí." }),
+      ),
+    );
+  }
+
+  function showBlockedPlaylist(playlist) {
+    errorHost.replaceChildren(blockedPlaylistCard(playlist));
   }
 
   // --- results rendering -----------------------------------------------------
@@ -895,8 +919,10 @@ function renderLibrary(view) {
     return list;
   }
 
-  function linkCard({ ref, item }) {
+  function linkCard({ ref, item, blocked }) {
     const kind = ref.type;
+    if (kind === "playlist" && blocked) return blockedPlaylistCard(item);
+
     const supported = kind !== "artist";
     let sub = "";
     if (kind === "track") sub = `${artistsText(item)} · ${item.album?.name ?? ""}`;
@@ -1100,7 +1126,8 @@ function renderLibrary(view) {
       if (link) {
         const resolved = await library.resolveRef(link);
         if (mine !== seq) return;
-        results = resolved?.item ? { kind: "link", ref: link, item: resolved.item } : { kind: "badlink" };
+        if (resolved?.blocked) results = { kind: "link", ref: link, item: resolved.item, blocked: true };
+        else results = resolved?.item ? { kind: "link", ref: link, item: resolved.item } : { kind: "badlink" };
       } else if (badLink) {
         results = { kind: "badlink" };
       } else {

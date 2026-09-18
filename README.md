@@ -70,6 +70,12 @@ Un modo principal y tres de práctica suelta:
    destildá lo que no quieras, confirmá y esas canciones entran derecho a
    **«Lo que sé»**, que es lo que suena en los juegos.
 
+> **Lo que Spotify no deja importar.** Desde febrero de 2026, una playlist que
+> no sea tuya devuelve solo nombre y portada — y «no tuya» incluye las que
+> Spotify arma *para vos*: «This Is…», Descubrimiento semanal, «Top canciones
+> 20XX», radios. La app lo dice en lugar de fallar, y propone la salida:
+> copiá esas canciones a una playlist tuya en Spotify e importá esa.
+
 ## Deploy en Coolify
 
 El repo trae `Dockerfile` (Nginx sirviendo el sitio estático en el puerto 80) y

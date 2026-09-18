@@ -6,6 +6,24 @@
 import * as storage from "./storage.js";
 import * as api from "./spotify-api.js";
 
+/**
+ * Thrown when Spotify hands over a playlist's name but not its songs.
+ * Since February 2026 a playlist you do not own returns metadata only, which
+ * covers every Spotify-made list: «This Is …», Discover Weekly, Radar.
+ */
+export class UnreadablePlaylistError extends Error {
+  constructor(playlist) {
+    super("Spotify no comparte las canciones de esta playlist");
+    this.name = "UnreadablePlaylistError";
+    this.playlist = playlist ?? null;
+  }
+}
+
+/** True for the statuses Spotify uses to hide content from this app. */
+function isBlocked(err) {
+  return err?.status === 404 || err?.status === 403;
+}
+
 const state = {
   lib: null, // { version, fetchedAt, tracks: {}, albums: {}, pool: [] }
   pending: [], // tracks awaiting user selection (in-memory, per session)
@@ -150,7 +168,7 @@ export async function importTrack(id) {
  * @returns {Promise<{tracks: object[], total: number, skipped: number, album?: object, rawTracks?: object[]}>}
  */
 export async function previewRef({ type, id }) {
-  if (type === "playlist") return api.getPlaylistItems(id);
+  if (type === "playlist") return previewPlaylist(id);
   if (type === "album") {
     const [album, tracks] = await Promise.all([api.getAlbum(id), api.getAlbumTracks(id)]);
     const full = tracks.map((t) => ({ ...t, album }));
@@ -163,6 +181,39 @@ export async function previewRef({ type, id }) {
     return { tracks: track?.id ? [track] : [], total: track?.id ? 1 : 0, skipped: 0 };
   }
   return { tracks: [], total: 0, skipped: 0 };
+}
+
+/**
+ * Whether a playlist that yielded no songs was withheld rather than empty.
+ * Only a list that explicitly declares zero is genuinely empty: an unknown
+ * count means Spotify handed over metadata and kept the contents.
+ * @param {{fetched: number, declared: number|null}} counts
+ */
+export function looksWithheld({ fetched, declared }) {
+  return fetched === 0 && declared !== 0;
+}
+
+/**
+ * A playlist's songs, or a clear failure when Spotify withholds them.
+ * Telling "blocked" apart from "empty" is the whole point of also reading
+ * the metadata: both come back as zero tracks otherwise.
+ */
+async function previewPlaylist(id) {
+  const [meta, page] = await Promise.all([
+    api.getPlaylist(id).catch((err) => {
+      if (isBlocked(err)) return null;
+      throw err;
+    }),
+    api.getPlaylistItems(id).catch((err) => {
+      if (isBlocked(err)) return null;
+      throw err;
+    }),
+  ]);
+  const declared = api.playlistTrackTotal(meta);
+  if (!page || looksWithheld({ fetched: page.tracks.length, declared })) {
+    throw new UnreadablePlaylistError(meta);
+  }
+  return { ...page, total: page.total || declared || page.tracks.length };
 }
 
 /** Liked songs, staged the same way as a reference. */
@@ -211,8 +262,16 @@ export function cacheAlbumTracklist(albumId, tracks) {
 export async function resolveRef({ type, id }) {
   if (type === "track") return { kind: "track", item: await api.getTrack(id) };
   if (type === "album") return { kind: "album", item: await api.getAlbum(id) };
-  if (type === "playlist") return { kind: "playlist", item: await api.getPlaylist(id) };
   if (type === "artist") return { kind: "artist", item: await api.getArtist(id) };
+  if (type === "playlist") {
+    // A blocked playlist is a real answer, not a network failure: the view
+    // explains why instead of showing "we could not read that link".
+    const item = await api.getPlaylist(id).catch((err) => {
+      if (isBlocked(err)) return null;
+      throw err;
+    });
+    return { kind: "playlist", item, blocked: !item };
+  }
   return null;
 }
 

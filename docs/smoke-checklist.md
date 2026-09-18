@@ -59,6 +59,14 @@ abierta (DevTools) y los pasos exactos.
       2025») funciona por enlace aunque no aparezca en el catálogo.
 - [ ] Enlace inválido o acortado (`spotify.link/…`, id truncado) → mensaje
       «No pudimos leer ese enlace», sin errores en consola.
+- [ ] Playlist que no es tuya: pegar el enlace de un «This Is…» → aparece la
+      tarjeta «Spotify no comparte las canciones de esta lista» con la salida
+      (copiarla a una playlist propia), no un error rojo ni «no pudimos leer
+      ese enlace».
+- [ ] Límite de búsqueda: en DevTools, `/search` debe pedir `limit=10` (desde
+      febrero de 2026 el máximo es 10; con 12 Spotify rechaza o recorta).
+- [ ] Paginación: cualquier recorrido con `next` debe repetir el MISMO `limit`
+      en todas las páginas (no 10 en la primera y 50 en la segunda).
 - [ ] Dentro de la ventana: «Todas» / «Ninguna» y el filtro de texto actúan
       solo sobre las filas visibles; el contador y el botón «Añadir N
       canciones» siguen la selección y se deshabilitan en cero.

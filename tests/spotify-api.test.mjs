@@ -16,7 +16,7 @@ globalThis.localStorage = {
   length: 0,
 };
 
-const { unwrapTrackRows, playlistTrackTotal } = await import("../src/spotify-api.js");
+const { unwrapTrackRows, playlistTrackTotal, nextPageParams } = await import("../src/spotify-api.js");
 
 let passed = 0;
 const failures = [];
@@ -95,6 +95,27 @@ const track = (id) => ({ id, name: `Canción ${id}`, type: "track", artists: [],
   check("zero is a real count", playlistTrackTotal({ items: { total: 0 } }), 0);
   check("unknown total", playlistTrackTotal({}), null);
   check("no playlist", playlistTrackTotal(null), null);
+}
+
+// --- paging keeps the caller's own page size ---------------------------------
+// /search caps `limit` at 10 since February 2026, so a walk that starts at 10
+// and jumps to 50 on page two is a 400 in waiting.
+
+{
+  const params = { limit: 10, include_groups: "album,single" };
+  const next = new URL("https://api.spotify.com/v1/artists/x/albums?offset=10&limit=10");
+  const out = nextPageParams(params, next);
+  check("paging: page size is the caller's", out.limit, 10);
+  check("paging: offset comes from the next link", out.offset, "10");
+  check("paging: other parameters survive", out.include_groups, "album,single");
+  check("paging: the caller's object is not mutated", params.offset, undefined);
+}
+
+{
+  const next = new URL("https://api.spotify.com/v1/me/tracks?limit=50");
+  const out = nextPageParams({ limit: 50 }, next);
+  check("paging: a next link with no offset adds none", out.offset, undefined);
+  check("paging: limit still carried", out.limit, 50);
 }
 
 if (failures.length > 0) {

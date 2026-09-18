@@ -95,6 +95,20 @@ function makeTrack(i) {
   check("empty selection: pool untouched", library.getPoolCount(), before);
 }
 
+// --- blocked vs. empty playlists ---------------------------------------------
+// Since February 2026 a playlist you do not own returns metadata only. Both
+// that and a genuinely empty playlist yield zero tracks, so the declared count
+// is the only thing that separates "Spotify won't give it to you" from
+// "there is nothing here".
+
+{
+  check("withheld: declares songs, hands back none", library.looksWithheld({ fetched: 0, declared: 71 }), true);
+  check("withheld: count unknown and nothing came back", library.looksWithheld({ fetched: 0, declared: null }), true);
+  check("empty: declares zero", library.looksWithheld({ fetched: 0, declared: 0 }), false);
+  check("fine: songs arrived", library.looksWithheld({ fetched: 71, declared: 71 }), false);
+  check("fine: partial is not withheld", library.looksWithheld({ fetched: 3, declared: 71 }), false);
+}
+
 // --- summary -----------------------------------------------------------------
 console.log(`library.test.mjs: ${passed} assertions passed, ${failures.length} failed`);
 if (failures.length > 0) {
