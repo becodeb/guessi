@@ -2023,6 +2023,23 @@ button {
    Round game (merged mode) — single screen, all challenges alive at once
    -------------------------------------------------------------------------- */
 
+/* Sticky action bar: the round is a long page, so "Otra canción" and "Ver
+   respuestas" must stay one tap away instead of living at the bottom. The app
+   nav is NOT sticky (it scrolls away), so top: 0 is free. Opaque --bg + a
+   --line hairline keep the content passing underneath readable. The negative
+   gutter margin lets the bar bleed to the container edges so nothing slides
+   past it at the sides. */
+.round__bar {
+  position: sticky;
+  top: 0;
+  /* Under the toast host (50), above the round's own stacking contexts (0/1). */
+  z-index: 20;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 10px var(--gutter);
+}
+
 .round__header {
   display: flex;
   align-items: center;
@@ -2036,8 +2053,34 @@ button {
   font-size: 1.2rem;
 }
 
-.round__header-action {
+.round__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-left: auto;
+}
+
+/* Phones: the bar must not eat the viewport. Shorter buttons and tighter
+   padding keep it around 90px even when the actions wrap onto their own row. */
+@media (max-width: 768px) {
+  .round__bar {
+    padding: 8px var(--gutter);
+  }
+
+  .round__header {
+    gap: 8px;
+  }
+
+  .round__actions {
+    gap: 6px;
+  }
+
+  .round__actions .btn {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+  }
 }
 
 .round__progress {
@@ -2141,6 +2184,79 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
+}
+
+/* --------------------------------------------------------------------------
+   Collapsible challenge sections (<details class="card round-sec">)
+   One card is open on arrival; the rest are a short menu, so the round stops
+   being an endless scroll when the player only wants one challenge.
+   Same 16px card radius, same --accent, no new tokens.
+   -------------------------------------------------------------------------- */
+
+.round-sec {
+  padding: 0;
+}
+
+.round-sec__head {
+  /* The whole row is the toggle, so it owns the card's horizontal padding. */
+  padding: 14px var(--gap-lg);
+  border-radius: var(--radius-card);
+  justify-content: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: background 160ms var(--ease-out);
+}
+
+/* Both spellings of "drop the native disclosure triangle". */
+.round-sec__head::-webkit-details-marker {
+  display: none;
+}
+
+.round-sec__head::marker {
+  content: "";
+}
+
+.round-sec__head > h2 {
+  margin-right: auto;
+}
+
+.round-sec__head:hover {
+  background: var(--surface-2);
+}
+
+/* Inset ring: the summary spans the card edge to edge, so an outside outline
+   would sit on top of the card border. Matches the global 2px accent ring. */
+.round-sec__head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+/* CSS-drawn chevron: two borders rotated, no sprite entry needed. */
+.round-sec__head::after {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 3px;
+  border-right: 2px solid var(--text-dim);
+  border-bottom: 2px solid var(--text-dim);
+  transform: rotate(45deg);
+}
+
+.round-sec[open] > .round-sec__head::after {
+  transform: rotate(-135deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .round-sec__head::after {
+    transition: transform 200ms var(--ease-out);
+  }
+}
+
+.round-sec__body {
+  padding: 0 var(--gap-lg) var(--gap-lg);
 }
 
 /* Shared cover — THE only album image on screen */
@@ -2247,6 +2363,19 @@ button {
   line-height: 1;
 }
 
+/* Length and start offset read as one line: "desde 1,5 s   0,4 s". */
+.clip-card__readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.clip-card__from {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .clip-card .clip__bar {
   height: 16px;
 }
@@ -2297,7 +2426,7 @@ button {
 .album-tracks {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 2px;
 }
 
 /* Rows reflow into 2+ columns on wide screens so a 12-track album isn't an
@@ -2308,43 +2437,46 @@ button {
   }
 }
 
+/* Density: a hairline under EVERY row turned a 14-track album into a wall of
+   boxes. Separation now comes from whitespace and the tabular track number;
+   the only tinted row is the one being typed in, which is the one that needs
+   to stand out. */
 .album-track {
   display: grid;
   grid-template-columns: 28px 1fr auto;
-  gap: 12px;
+  gap: 10px;
   align-items: start;
-  padding: 10px 4px;
-  border-bottom: 1px solid var(--line);
+  padding: 4px 8px;
+  border-radius: var(--radius-input);
+  transition: background 160ms var(--ease-out);
 }
 
-.album-track:last-child {
-  border-bottom: none;
+.album-track:focus-within {
+  background: var(--surface-2);
 }
 
-@media (min-width: 560px) {
-  .album-track {
-    border-bottom: none;
-  }
+.album-track .guess__input {
+  min-height: 40px;
 }
 
 .album-track__num {
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   font-size: 0.875rem;
-  padding-top: 12px;
+  padding-top: 10px;
 }
 
 .album-track__main {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .album-track__artists {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Per-track start/end previews (Premium): play + «+seconds» per edge, one edge

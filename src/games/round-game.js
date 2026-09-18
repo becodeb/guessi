@@ -10,7 +10,10 @@
 import * as ui from "../ui.js";
 import * as match from "../match.js";
 import { createAutoGuess } from "../guess-auto.js";
-import { CLIP_STEPS_MS, clipIncrement, growClip } from "../clip-steps.js";
+import {
+  CLIP_STEPS_MS, clipIncrement, growClip,
+  OFFSET_STEPS_MS, offsetIncrement, growOffset,
+} from "../clip-steps.js";
 import { isStaleCover } from "../storage.js";
 import { createLyricsGame, tokenize, maskWord } from "../lyrics-engine.js";
 import { getLyrics, saveManualLyrics } from "../lyrics.js";
@@ -97,28 +100,92 @@ function drawRound(view, live) {
   handle.cardEls = {};
 
   const track = handle.ctx.library.getRandomTrack();
-  handle.round = { track };
+  handle.round = {
+    track,
+    // Round-level knowledge bus: a name or an artist solved in ANY card is
+    // published once and every other card gets a chance to fill itself with it.
+    // The card closures stay private; only these two channels cross them.
+    bus: {
+      titles: new Set(), // normalized names already published (re-entrancy guard)
+      rawTitles: [], // same names, raw, in publish order (for late subscribers)
+      artists: new Set(), // artist keys already published
+      titleSubs: [],
+      artistSubs: [],
+    },
+  };
 
   view.replaceChildren(live, renderHeader(), buildLayout(track), renderFooter());
   updateProgress();
 }
 
+// --- knowledge bus ----------------------------------------------------------
+
+/** Stable identity for a credited artist (Spotify id, else the name). */
+function artistKeyOf(a) {
+  return typeof a === "string" ? a : (a?.id ?? a?.name ?? null);
+}
+
+function onTitle(fn) {
+  handle.round.bus.titleSubs.push(fn);
+}
+
+function onArtist(fn) {
+  handle.round.bus.artistSubs.push(fn);
+}
+
+/**
+ * Publish a solved song/album name to every card. The normalized name enters
+ * the set BEFORE the subscribers run: a subscriber that locks its own field and
+ * republishes the very same name must short-circuit instead of recursing.
+ */
+function publishTitle(name) {
+  const bus = handle?.round?.bus;
+  if (!bus) return;
+  const key = match.normalize(name);
+  if (!key || bus.titles.has(key)) return;
+  bus.titles.add(key);
+  bus.rawTitles.push(name);
+  for (const fn of [...bus.titleSubs]) fn(name);
+}
+
+/** Same contract as publishTitle, keyed by artist identity. */
+function publishArtist(artist) {
+  const bus = handle?.round?.bus;
+  if (!bus) return;
+  const key = artistKeyOf(artist);
+  if (key == null || key === "" || bus.artists.has(key)) return;
+  bus.artists.add(key);
+  for (const fn of [...bus.artistSubs]) fn(artist);
+}
+
 // --- header + progress ------------------------------------------------------
 
+// Both primary actions live here, in a sticky bar: the round is a long page and
+// neither "Otra canción" nor "Ver respuestas" should cost a scroll to the
+// bottom. The footer keeps only the way out of the game.
 function renderHeader() {
   const progress = ui.el("span", { class: "chip chip--muted", id: "round-progress" });
   handle.progressChip = progress;
   const segments = ui.el("div", { class: "round__segments", "aria-hidden": "true" });
   handle.progressSegments = segments;
-  const ver = ui.el("button", {
-    class: "btn btn--ghost round__header-action",
-    text: "Ver respuestas",
-    on: { click: () => revealAll() },
-  });
-  return ui.el("div", { class: "round__header" },
-    ui.el("span", { class: "round__title", text: "Ronda" }),
-    ui.el("div", { class: "round__progress" }, segments, progress),
-    ver,
+  const actions = ui.el("div", { class: "round__actions" },
+    ui.el("button", {
+      class: "btn btn--primary",
+      text: "Otra canción",
+      on: { click: () => drawRound(handle.view, handle.live) },
+    }),
+    ui.el("button", {
+      class: "btn btn--ghost",
+      text: "Ver respuestas",
+      on: { click: () => revealAll() },
+    }),
+  );
+  return ui.el("div", { class: "round__bar" },
+    ui.el("div", { class: "round__header" },
+      ui.el("span", { class: "round__title", text: "Ronda" }),
+      ui.el("div", { class: "round__progress" }, segments, progress),
+      actions,
+    ),
   );
 }
 
@@ -364,6 +431,10 @@ function renderAudioBar(track) {
     primed: false,
     stepIndex: 0,
     targetMs: CLIP_STEPS_MS[0],
+    // Where the clip starts. Independent ladder: a silent intro is a "move the
+    // window", not a "make the window longer" problem.
+    fromMs: 0,
+    offsetStep: 0,
     priming: null,
     maxMs: Number.isFinite(duration) && duration > 0 ? duration : Infinity,
   };
@@ -376,22 +447,38 @@ function renderAudioBar(track) {
 // +0,1s doubles the jump on every tap (CLIP_STEPS_MS) and the label always
 // announces the next tap's jump, so the clip can be stretched coarsely once the
 // first seconds are not enough. Reproducir toggles into Detener while it plays.
+//
+// Two separate dimensions, two separate ladders: «+» makes the window LONGER,
+// «Saltar» moves WHERE it starts. Conflating them meant a silent intro could
+// only be escaped by stretching the clip until it was coarse and useless.
 function clipBlock(track, st) {
   const { ctx } = handle;
   const fill = ui.el("div", { class: "clip__fill" });
   const bar = ui.el("div", { class: "clip__bar", "aria-hidden": "true" }, fill);
   const label = ui.el("span", { class: "clip__label display--num", text: ui.formatMs(st.targetMs) });
+  const fromLabel = ui.el("span", { class: "clip-card__from", hidden: true });
 
   const stopPlayback = () => {
     if (st.playing) ctx.player.stop();
   };
 
+  // Room the window has left before the track ends. The clip may grow up to
+  // `maxMs − fromMs`, and the start may move up to `maxMs − targetMs`.
+  const clipCap = () => (Number.isFinite(st.maxMs) ? Math.max(0, st.maxMs - st.fromMs) : Infinity);
+  const offsetCap = () => (Number.isFinite(st.maxMs) ? Math.max(0, st.maxMs - st.targetMs) : Infinity);
+
   const syncClip = () => {
     label.textContent = ui.formatMs(st.targetMs);
+    fromLabel.hidden = st.fromMs <= 0;
+    if (st.fromMs > 0) fromLabel.textContent = `desde ${ui.formatMs(st.fromMs)}`;
     // The button always announces the NEXT tap's jump (the doubling ladder).
     addBtn.textContent = `+${ui.formatMs(clipIncrement(st.stepIndex))}`;
-    addBtn.disabled = st.targetMs >= st.maxMs;
-    resetBtn.disabled = st.stepIndex === 0 && st.targetMs === CLIP_STEPS_MS[0];
+    addBtn.disabled = st.fromMs + st.targetMs >= st.maxMs;
+    // Same convention for the start: the label is the next tap's jump.
+    skipBtn.textContent = `Saltar +${ui.formatMs(offsetIncrement(st.offsetStep))}`;
+    skipBtn.disabled = st.fromMs >= offsetCap();
+    resetBtn.disabled =
+      st.stepIndex === 0 && st.targetMs === CLIP_STEPS_MS[0] && st.offsetStep === 0 && st.fromMs === 0;
   };
 
   const playBtn = ui.el("button", {
@@ -419,6 +506,7 @@ function clipBlock(track, st) {
         fill.style.transition = `width ${st.targetMs}ms linear`;
         fill.style.width = "100%";
         ctx.player.playClip(st.targetMs, {
+          fromMs: st.fromMs,
           onEnd: () => {
             st.playing = false;
             playBtn.textContent = "Reproducir";
@@ -437,7 +525,7 @@ function clipBlock(track, st) {
     on: {
       click: () => {
         stopPlayback();
-        const next = growClip(st.targetMs, st.stepIndex, st.maxMs);
+        const next = growClip(st.targetMs, st.stepIndex, clipCap());
         st.targetMs = next.targetMs;
         st.stepIndex = next.stepIndex;
         syncClip();
@@ -446,23 +534,42 @@ function clipBlock(track, st) {
     },
   });
 
+  const skipBtn = ui.el("button", {
+    class: "btn btn--ghost",
+    text: `Saltar +${ui.formatMs(OFFSET_STEPS_MS[0])}`,
+    title: "Correr el arranque del clip",
+    "aria-label": "Saltar el inicio de la canción",
+    on: {
+      click: () => {
+        stopPlayback();
+        const next = growOffset(st.fromMs, st.offsetStep, offsetCap());
+        st.fromMs = next.fromMs;
+        st.offsetStep = next.stepIndex;
+        syncClip();
+        announce(`Clip de ${ui.formatMs(st.targetMs)} desde ${ui.formatMs(st.fromMs)}`);
+      },
+    },
+  });
+
   const resetBtn = ui.el("button", {
     class: "btn btn--ghost",
     text: "Reiniciar",
-    "aria-label": "Volver el clip a 0,1 s",
+    "aria-label": "Volver el clip a 0,1 s desde el arranque",
     on: {
       click: () => {
         stopPlayback();
         st.stepIndex = 0;
         st.targetMs = CLIP_STEPS_MS[0];
+        st.offsetStep = 0;
+        st.fromMs = 0;
         syncClip();
-        announce("Clip de 0,1 s");
+        announce("Clip de 0,1 s desde el arranque");
       },
     },
   });
   const hint = ui.el("p", {
     class: "clip-card__hint",
-    text: "Cada toque suma el doble (0,1 → 0,2 → 0,4…). Reiniciar vuelve a 0,1 s.",
+    text: "«+» alarga el clip; «Saltar» corre el arranque para saltear el silencio del principio. Reiniciar vuelve a 0,1 s desde cero.",
   });
 
   syncClip();
@@ -470,25 +577,38 @@ function clipBlock(track, st) {
   return ui.el("div", { class: "card clip-card" },
     ui.el("div", { class: "clip-card__head" },
       ui.el("span", { class: "clip-card__caption", text: "Clip" }),
-      label,
+      ui.el("span", { class: "clip-card__readout" }, fromLabel, label),
     ),
     ui.el("div", { class: "clip" }, bar),
-    ui.el("div", { class: "clip__actions" }, playBtn, addBtn, resetBtn),
+    ui.el("div", { class: "clip__actions" }, playBtn, addBtn, skipBtn, resetBtn),
     hint,
   );
 }
 
 // --- card shell -------------------------------------------------------------
 
+// Which card is open on arrival. Only one, so the round opens as a short menu
+// instead of an endless scroll: the player picks the challenge they want.
+// "La canción" is the natural first stop, but it is Premium-gated, so a free
+// account opens on the album card instead of on a locked one.
+function defaultCardOpen(id) {
+  return handle.ctx.player.isPremium() ? id === "song" : id === "album";
+}
+
+// Native <details>/<summary>: keyboard toggling, Enter/Space, and the
+// aria-expanded semantics come from the browser instead of hand-rolled ARIA.
+// The summary keeps the `card__head` class — the album card appends its
+// tracklist chip through that selector.
 function makeCard(id) {
   const chip = ui.el("span", { class: "chip chip--muted", hidden: true });
   handle.cardChips[id] = chip;
-  const head = ui.el("div", { class: "card__head" },
+  const head = ui.el("summary", { class: "card__head round-sec__head" },
     ui.el("h2", { class: "display display--md", text: CARD_TITLES[id] }),
     chip,
   );
-  const body = ui.el("div", { class: "stack" });
-  const cardEl = ui.el("div", { class: "card stack" }, head, body);
+  const body = ui.el("div", { class: "stack round-sec__body" });
+  const cardEl = ui.el("details", { class: "card round-sec" }, head, body);
+  cardEl.open = defaultCardOpen(id);
   handle.cardEls[id] = cardEl;
   return { cardEl, body };
 }
@@ -543,6 +663,7 @@ function renderSongCard(track, premium) {
       group.classList.add("guess--correct");
       announce(`Título correcto: ${track.name}`);
       checkSolved();
+      publishTitle(track.name);
     } else {
       group.classList.remove("guess--correct");
       group.classList.add("guess--incorrect");
@@ -601,6 +722,13 @@ function renderSongCard(track, premium) {
         if (next && next !== focused) next.focus();
       }
     }
+
+    // Published last: a subscriber may move focus (the album card fills rows),
+    // and this card's own focus flow must settle first.
+    // `locked` is indexed by the CREDITED artist, not by the slot that guessed.
+    artists.forEach((artist, j) => {
+      if (result.locked[j]) publishArtist(artist);
+    });
   };
   artists.forEach((artist) => {
     const slotInput = ui.el("input", {
@@ -634,7 +762,36 @@ function renderSongCard(track, premium) {
     solvedBanner.hidden = false;
     bannerText.textContent = "Canción revelada.";
     setCardState(id, "revealed");
+    publishTitle(track.name);
+    artists.forEach((artist) => publishArtist(artist));
   };
+
+  // --- bus subscriptions -----------------------------------------------------
+
+  onTitle((name) => {
+    if (st.titleSolved || !match.matchTitle(name, track.name)) return;
+    st.titleSolved = true;
+    input.disabled = true;
+    input.value = track.name;
+    group.classList.remove("guess--incorrect");
+    group.classList.add("guess--correct");
+    checkSolved();
+  });
+
+  onArtist((a) => {
+    const key = artistKeyOf(a);
+    if (key == null) return;
+    const j = artists.findIndex((x) => artistKeyOf(x) === key);
+    if (j === -1) return;
+    const slotInput = slotInputs[j];
+    if (!slotInput || slotInput.disabled) return;
+    slotInput.value = artistNames[j];
+    slotInput.disabled = true;
+    slotGroups[j].classList.remove("guess--incorrect");
+    slotGroups[j].classList.add("guess--correct");
+    st.artistsSolved = slotInputs.every((i) => i.disabled);
+    checkSolved();
+  });
 
   const children = [
     ui.el("p", { class: "guess-panel__title", text: "Adivina el título" }),
@@ -688,6 +845,9 @@ function renderAlbumCard(track, premium) {
     tracks: null,
     tracklistLoaded: false,
     loadError: false,
+    // A single-track album has no tracklist game to play: guessing the album
+    // name IS guessing the song. The whole section is hidden in that case.
+    singleTrack: false,
     rowState: [],
     rowEls: [],
   };
@@ -719,30 +879,26 @@ function renderAlbumCard(track, premium) {
     albumGroup.classList.remove("guess--incorrect");
     albumGroup.classList.add("guess--correct");
     checkSolved();
+    publishTitle(name);
   };
 
-  // A solved name fills every other input that expects the same name: a
-  // self-titled track (song title = album title) resolves on either side, and
-  // repeated titles fill all of their rows. Rows match by expected name, never
-  // by position.
-  function propagateTitle(name) {
+  // A solved name fills every row that expects the same name: repeated titles
+  // fill all of their rows at once. Rows match by expected name, never by
+  // position. The album-level half of the old propagateTitle now lives in the
+  // bus subscriber, so a title solved in ANY card reaches here too.
+  function applyTitleToRows(name) {
+    if (!ac.tracklistLoaded) return;
     const filled = [];
-    if (ac.tracklistLoaded) {
-      for (let i = 0; i < ac.tracks.length; i++) {
-        if (ac.rowState[i].songLocked) continue;
-        if (!match.matchTitle(name, ac.tracks[i].name)) continue;
-        lockRowSong(i, ac.tracks[i].name);
-        filled.push(i + 1);
-      }
-      if (filled.length > 0) {
-        updateTracklistChip();
-        announce(`Se completaron por nombre repetido: tema${filled.length > 1 ? "s" : ""} ${filled.join(", ")}`);
-      }
+    for (let i = 0; i < ac.tracks.length; i++) {
+      if (ac.rowState[i].songLocked) continue;
+      if (!match.matchTitle(name, ac.tracks[i].name)) continue;
+      lockRowSong(i, ac.tracks[i].name);
+      filled.push(i + 1);
     }
-    if (!st.albumCorrect && match.matchAlbum(name, album.name)) {
-      lockAlbum(album.name);
-      announce(`Álbum correcto: ${album.name}`);
-    }
+    if (filled.length === 0) return;
+    updateTracklistChip();
+    if (ac.singleTrack) return; // nothing on screen to describe
+    announce(`Se completaron por nombre repetido: tema${filled.length > 1 ? "s" : ""} ${filled.join(", ")}`);
   }
 
   const evaluateAlbum = () => {
@@ -751,7 +907,6 @@ function renderAlbumCard(track, premium) {
     if (match.matchAlbum(v, album.name)) {
       lockAlbum(album.name);
       announce(`Álbum correcto: ${album.name}`);
-      propagateTitle(album.name);
     } else {
       albumGroup.classList.remove("guess--correct");
       albumGroup.classList.add("guess--incorrect");
@@ -791,6 +946,9 @@ function renderAlbumCard(track, premium) {
       announce("Artistas del álbum correctos");
       checkSolved();
     }
+    (album.artists ?? []).forEach((artist, j) => {
+      if (result.locked[j]) publishArtist(artist);
+    });
   };
   slotGroups = (album.artists ?? []).map((artist) => {
     const input = ui.el("input", {
@@ -818,6 +976,12 @@ function renderAlbumCard(track, premium) {
     class: "muted-note",
     text: "Escribí cualquier tema del álbum, sin importar el orden",
   });
+  // One container so a single-track album can hide the whole tracklist game.
+  const freeBlock = ui.el("div", { class: "stack" },
+    ui.el("p", { class: "guess-panel__title", text: "O en cualquier orden" }),
+    freeGroup,
+    freeNote,
+  );
   const evaluateFree = () => {
     if (!ac.tracklistLoaded) return;
     const v = freeInput.value.trim();
@@ -835,7 +999,6 @@ function renderAlbumCard(track, premium) {
     freeInput.value = "";
     announce(`Tema ${hit + 1} correcto: ${ac.tracks[hit].name}`);
     updateTracklistChip();
-    propagateTitle(ac.tracks[hit].name);
   };
   auto.bind(freeGroup, freeInput, () => true, evaluateFree);
 
@@ -870,11 +1033,20 @@ function renderAlbumCard(track, premium) {
     ac.tracks = tracks;
     ac.tracklistLoaded = true;
     ac.rowState = tracks.map(newRowState);
+    // A single-track album: guessing the album name already gave away the only
+    // song, so the whole tracklist game is noise. Hide it instead of showing a
+    // one-row grid and a "Temas: 0/1" chip.
+    if (tracks.length <= 1) {
+      ac.singleTrack = true;
+      freeBlock.hidden = true;
+      tracklistChip.hidden = true;
+    }
+    // Names solved while this was loading never saw these rows. The bus set
+    // holds NORMALIZED names, so replay the raw ones kept alongside it.
+    const pending = [...handle.round.bus.rawTitles];
     renderAlbumTracklistGrid();
     updateTracklistChip();
-    // The album name may have been solved while the tracklist was loading:
-    // fill its self-titled row(s) now that they exist.
-    if (st.albumCorrect) propagateTitle(album.name);
+    for (const name of pending) applyTitleToRows(name);
   }
 
   // One ladder per row edge (start / end), same doubling as the round clip.
@@ -897,7 +1069,8 @@ function renderAlbumCard(track, premium) {
   function renderAlbumTracklistGrid() {
     if (!ac.tracklistLoaded) return;
     auto.clearAll(); // drop timers for inputs about to be detached
-    tracklistBox.innerHTML = "";
+    tracklistBox.innerHTML = ""; // also clears the loading skeleton
+    if (ac.singleTrack) return; // no grid for a single-track album
     const grid = ui.el("div", { class: "album-tracks" });
     ac.rowEls = [];
     for (let i = 0; i < ac.tracks.length; i++) grid.append(buildTrackRow(i));
@@ -1070,7 +1243,6 @@ function renderAlbumCard(track, premium) {
       lockRowSong(i, ac.tracks[i].name);
       announce(`Tema ${i + 1} correcto: ${ac.tracks[i].name}`);
       updateTracklistChip();
-      propagateTitle(ac.tracks[i].name);
     } else {
       els.songGroup.classList.remove("guess--correct");
       els.songGroup.classList.add("guess--incorrect");
@@ -1138,6 +1310,9 @@ function renderAlbumCard(track, premium) {
     // A solved artist is known for the whole album: fill it in every other row
     // that credits it instead of asking again.
     if (markKnownArtists(remArtists, result.locked)) syncKnownArtists();
+    remArtists.forEach((artist, m) => {
+      if (result.locked[m]) publishArtist(artist);
+    });
   }
 
   function lockRowSong(i, name) {
@@ -1151,10 +1326,11 @@ function renderAlbumCard(track, premium) {
       els.songGroup.classList.remove("guess--incorrect");
       els.songGroup.classList.add("guess--correct");
     }
+    publishTitle(name);
   }
 
   function updateTracklistChip() {
-    if (!ac.tracklistLoaded) return;
+    if (!ac.tracklistLoaded || ac.singleTrack) return;
     const M = ac.tracks.length;
     const N = ac.rowState.filter((r) => r.songLocked).length;
     const allComplete = ac.rowState.every((r) => r.songLocked && r.artistSolved);
@@ -1300,6 +1476,36 @@ function renderAlbumCard(track, premium) {
     setCardState(id, "revealed");
   };
 
+  // --- bus subscriptions -----------------------------------------------------
+
+  onTitle((name) => {
+    if (!st.albumCorrect && match.matchAlbum(name, album.name)) {
+      lockAlbum(album.name);
+      announce(`Álbum correcto: ${album.name}`);
+    }
+    applyTitleToRows(name);
+  });
+
+  onArtist((a) => {
+    const key = artistKeyOf(a);
+    if (key == null) return;
+    if (!knownArtists.has(key)) {
+      knownArtists.add(key);
+      syncKnownArtists();
+    }
+    const credited = album.artists ?? [];
+    const j = credited.findIndex((x) => artistKeyOf(x) === key);
+    if (j === -1) return;
+    const slotInput = slotInputs[j];
+    if (!slotInput || slotInput.disabled) return;
+    slotInput.value = artistName(credited[j]);
+    slotInput.disabled = true;
+    slotGroups[j].classList.remove("guess--incorrect");
+    slotGroups[j].classList.add("guess--correct");
+    st.artistSolved = slotInputs.every((i) => i.disabled);
+    checkSolved();
+  });
+
   body.append(
     ui.el("p", { class: "guess-panel__title", text: "Adivina el álbum" }),
     albumGroup,
@@ -1307,9 +1513,7 @@ function renderAlbumCard(track, premium) {
       ? [ui.el("p", { class: "guess-panel__title", text: "Adivina el artista" }), ...slotGroups]
       : []),
     solvedBanner,
-    ui.el("p", { class: "guess-panel__title", text: "O en cualquier orden" }),
-    freeGroup,
-    freeNote,
+    freeBlock,
     tracklistBox,
   );
 
@@ -1416,7 +1620,7 @@ function renderLyricsCard(track) {
   const st = { engine: null, wordEls: [], done: false, lastCursor: null, forceReveal: false };
   const round = handle.round;
 
-  const helpLine = ui.el("p", { class: "muted-note lyrics__help", text: "Espacio coloca la palabra en el cursor; Enter busca esa palabra en toda la letra." });
+  const helpLine = ui.el("p", { class: "muted-note lyrics__help", text: "Espacio coloca la palabra en el cursor; Enter completa todas las apariciones de esa palabra." });
   const area = ui.el("div", { class: "lyrics", "aria-label": "Letra" });
   const hintLine = ui.el("p", { class: "muted-note lyrics__hintline" });
   const input = ui.el("input", {
@@ -1467,6 +1671,9 @@ function renderLyricsCard(track) {
     });
   };
   const scrollCursor = () => {
+    // Scrolling a collapsed section yanks the page: the card is a <details>
+    // and its body is not rendered while closed.
+    if (!cardEl.open) return;
     const cur = st.engine.cursor();
     if (cur != null && st.wordEls[cur]) st.wordEls[cur].scrollIntoView({ block: "nearest" });
   };
@@ -1524,12 +1731,33 @@ function renderLyricsCard(track) {
       }
     } else {
       if (tok === "") return;
-      const res = st.engine.revealAnywhere(tok);
-      if (res.ok) { applyResult(res); input.value = ""; }
-      else {
+      // Enter completes EVERY occurrence. revealAnywhere reveals one hit per
+      // call, so drain it: a chorus word used to cost one Enter per repetition.
+      // (lyrics-engine.js is shared and covered by tests — looped here, not
+      // changed there.)
+      const hits = [];
+      let res = st.engine.revealAnywhere(tok);
+      while (res.ok) {
+        hits.push(res.revealedIndex);
+        res = st.engine.revealAnywhere(tok);
+      }
+      if (hits.length === 0) {
         const norm = match.normalize(tok);
         ui.toast(st.engine.discoveredWords().includes(norm) ? "Esa palabra ya está descubierta" : "No encontré esa palabra acá", "info");
         input.value = "";
+      } else {
+        for (const gi of hits) {
+          if (gi == null) continue;
+          refreshWord(gi);
+          st.wordEls[gi].classList.add("lyrics__w--enter");
+        }
+        syncCursor();
+        scrollCursor();
+        updateHintCounter();
+        clearInputError();
+        input.value = "";
+        if (hits.length > 1) ui.toast(`Se completaron ${hits.length} apariciones`, "info");
+        if (st.engine.isComplete()) finish();
       }
     }
     input.focus();
@@ -1580,7 +1808,10 @@ function renderLyricsCard(track) {
     });
     refreshAll();
     syncCursor();
-    input.focus();
+    // The lyrics card starts collapsed: focusing an input inside a closed
+    // <details> makes the browser jump the page open. Only steal focus when
+    // the section is actually on screen.
+    if (cardEl.open) input.focus();
     if (st.forceReveal) revealLyrics();
   };
 
@@ -1648,18 +1879,11 @@ function renderLyricsCard(track) {
 
 // --- footer + reveal-all -----------------------------------------------------
 
+// "Otra canción" and "Ver respuestas" moved to the sticky bar: repeating them
+// here would be two buttons with one intent each, at opposite ends of a long
+// page. Only the exit link stays.
 function renderFooter() {
   return ui.el("div", { class: "round__footer" },
-    ui.el("button", {
-      class: "btn btn--primary",
-      text: "Otra canción",
-      on: { click: () => drawRound(handle.view, handle.live) },
-    }),
-    ui.el("button", {
-      class: "btn btn--ghost",
-      text: "Ver respuestas",
-      on: { click: () => revealAll() },
-    }),
     ui.el("a", { class: "ghost-link", href: "#/juegos", text: "Volver a Juegos" }),
   );
 }
@@ -1667,6 +1891,9 @@ function renderFooter() {
 function revealAll() {
   revealCoverFull();
   for (const id of ["song", "album", "year", "lyrics"]) {
+    // Revealed answers behind a collapsed section are not an answer: open it.
+    const cardEl = handle.cardEls[id];
+    if (cardEl) cardEl.open = true;
     const fn = handle.cardReveal[id];
     if (fn) fn();
   }
