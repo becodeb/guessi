@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121110">
+  <meta name="description" content="Harness: boots the real app against fake Spotify data for screenshots.">
+  <title>de oído — harness</title>
+  <!-- Same data-URI favicon as index.html — without any icon link, Chromium
+       auto-requests /favicon.ico and that 404 shows up as console noise. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23121110'/%3E%3Cpath d='M12 22V10l10-2v12' fill='none' stroke='%233ecf8e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='9.5' cy='22' r='2.5' fill='%23f2ede4'/%3E%3Ccircle cx='19.5' cy='20' r='2.5' fill='%23f2ede4'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Karla:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <!-- Real stylesheet — this harness must never fork visual truth from the app. -->
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Same inline icon sprite as index.html, copied verbatim. Without it every
+       ui.icon() call renders an empty <use> (harness-ronda.html found this the
+       hard way — the volume icon was invisible in screenshots only). -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <defs>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5z"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5v13l9-6.5z"/><path d="M19 5.5v13"/></symbol>
+      <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></symbol>
+      <symbol id="i-cover" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4.5 18.5l5-5 3.5 3.5 2.5-2.5 4 4"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3.5v4M16 3.5v4"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M7 6.5l1 13h8l1-13M10 10.5v5.5M14 10.5v5.5"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5L21.5 20h-19z"/><path d="M12 10v4.5M12 17.5v.5"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L13 19V5L7.5 9.5z"/><path d="M16 9a4.5 4.5 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4.5h-4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h4"/><path d="M14.5 8l4 4-4 4M18 12H9.5"/></symbol>
+      <symbol id="i-album" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16M4 12h16M4 17.5h9"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 13.5a4 4 0 0 0 5.7 0l2.3-2.3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-2.3 2.3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    </defs>
+  </svg>
+
+  <script>
+    // Harness bootstrap — classic (non-module) script, so it runs synchronously
+    // and completes BEFORE the module script below is even parsed for execution.
+    // Everything main.js's module graph can observe (localStorage, window.fetch,
+    // window.Spotify) must already be in its final shape by the time that
+    // <script type="module"> line starts running, or the app boots against a
+    // half-stubbed world. A `type="module"` script cannot give this guarantee
+    // (module execution is deferred), which is the one thing this file cannot
+    // copy from harness-ronda.html (that harness only imports one game module
+    // itself, instead of booting the real main.js, so it never had this
+    // ordering problem).
+    (function () {
+      "use strict";
+      localStorage.clear();
+
+      var params = new URLSearchParams(location.search);
+      var PREMIUM = params.get("premium") !== "0"; // default: Premium account
+      var EMPTY = params.get("empty") === "1"; // default: seeded library
+      // Not one of the two params the task asked for by name, but something has
+      // to keep the login screen reachable: main.js redirects #/login → #/juegos
+      // the instant auth.isAuthenticated() is true, so reaching /login at all
+      // means shipping a page load with NO tokens seeded.
+      var AUTHED = params.get("authed") !== "0"; // default: logged in
+
+      // --- fake catalog ------------------------------------------------------
+      // ~10 real Latin/Argentine rock & pop albums, ~4 tracks each (~40 tracks),
+      // real artists/albums/years, plausible durations. Good enough for a UI
+      // screenshot baseline — not a discography-accurate catalog.
+
+      function slug(s) {
+        return String(s)
+          .toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+      }
+
+      function coverImages(seed) {
+        // picsum.photos confirmed reachable from this sandbox (a plain GET,
+        // following redirects like a real <img> does, returned a real JPEG —
+        // the `curl -sI` HEAD check the task suggested as the network probe
+        // gets a 405 from picsum's edge, which only means picsum rejects HEAD,
+        // not that the network is down). round-game.js only ever drawImage()s
+        // the cover into a <canvas> for its blur/pixelate effects and never
+        // calls getImageData/toDataURL on it, so a cross-origin, non-CORS cover
+        // never taints anything this app actually reads back — safe to use.
+        return [640, 300, 64].map(function (size) {
+          return {
+            url: "https://picsum.photos/seed/" + encodeURIComponent(seed) + "/" + size + "/" + size,
+            width: size,
+            height: size,
+          };
+        });
+      }
+
+      var ALBUM_SOURCE = [
+        { artist: "Soda Stereo", album: "Canción Animal", year: 1990, tracks: [
+          ["De Música Ligera", 242000], ["(En) El Séptimo Día", 273000],
+          ["Un Millón de Años Luz", 263000], ["Té Para Tres", 296000],
+        ] },
+        { artist: "Charly García", album: "Clics Modernos", year: 1983, tracks: [
+          ["No Voy en Tren", 227000], ["Nos Siguen Pegando Abajo", 272000],
+          ["Los Dinosaurios", 240000], ["Filosofía Barata y Zapatos de Goma", 213000],
+        ] },
+        { artist: "Luis Alberto Spinetta", album: "Artaud", year: 1973, tracks: [
+          ["Todas las Hojas Son del Viento", 213000], ["Cementerio Club", 200000],
+          ["Superchería", 180000], ["Bajan", 165000],
+        ] },
+        { artist: "Fito Páez", album: "El Amor Después del Amor", year: 1992, tracks: [
+          ["Un Vestido y un Amor", 240000], ["Mariposa Technicolor", 260000],
+          ["Tráiganme Alcohol", 195000], ["Y Dale Alegría a Mi Corazón", 285000],
+        ] },
+        { artist: "Gustavo Cerati", album: "Bocanada", year: 1999, tracks: [
+          ["Puente", 303000], ["Bocanada", 273000],
+          ["Río Bravo", 220000], ["Tabú", 250000],
+        ] },
+        { artist: "Babasónicos", album: "Jessico", year: 2001, tracks: [
+          ["Deléctrico", 210000], ["Irresponsables", 225000],
+          ["El Colmo", 200000], ["Los Calientes", 230000],
+        ] },
+        { artist: "Los Fabulosos Cadillacs", album: "Vasos Vacíos", year: 1993, tracks: [
+          ["Vasos Vacíos", 250000], ["Mal Bicho", 200000],
+          ["Matador", 240000], ["El Genio del Dub", 210000],
+        ] },
+        { artist: "Bersuit Vergarabat", album: "Hijos del Culo", year: 2000, tracks: [
+          ["Sr. Cobranza", 270000], ["La Argentinidad al Palo", 330000],
+          ["Se Viene", 240000], ["Yo Tomo", 220000],
+        ] },
+        { artist: "Andrés Calamaro", album: "Honestidad Brutal", year: 1999, tracks: [
+          ["Flaca", 260000], ["Loco", 230000],
+          ["Crímenes Perfectos", 250000], ["Tuyo Siempre", 210000],
+        ] },
+        { artist: "Mon Laferte", album: "La Trenza", year: 2017, tracks: [
+          ["Amárrame", 200000], ["Tu Falta de Querer", 227000],
+          ["Antes de Ti", 210000], ["La Trenza", 240000],
+        ] },
+      ];
+
+      var ARTISTS = [];
+      var ALBUMS = [];
+      var ALL_TRACKS = [];
+      var ARTIST_BY_ID = {};
+      var ALBUM_BY_ID = {};
+      var TRACK_BY_ID = {};
+
+      ALBUM_SOURCE.forEach(function (src) {
+        var artistId = "artist-" + slug(src.artist);
+        var artist = { id: artistId, name: src.artist, genres: ["rock nacional"], images: coverImages(src.artist) };
+        if (!ARTIST_BY_ID[artistId]) { ARTISTS.push(artist); ARTIST_BY_ID[artistId] = artist; }
+
+        var albumId = "album-" + slug(src.album);
+        var images = coverImages(src.album);
+        var album = {
+          id: albumId,
+          name: src.album,
+          album_type: "album",
+          artists: [{ id: artistId, name: src.artist }],
+          release_date: src.year + "-01-01",
+          total_tracks: src.tracks.length,
+          images: images,
+        };
+        ALBUMS.push(album);
+        ALBUM_BY_ID[albumId] = album;
+
+        var albumTracks = src.tracks.map(function (t, i) {
+          var trackId = "track-" + slug(src.album) + "-" + (i + 1);
+          var track = {
+            id: trackId,
+            uri: "spotify:track:" + trackId,
+            name: t[0],
+            track_number: i + 1,
+            duration_ms: t[1],
+            artists: [{ id: artistId, name: src.artist }],
+            album: album,
+          };
+          ALL_TRACKS.push(track);
+          TRACK_BY_ID[trackId] = track;
+          return track;
+        });
+        album.__tracks = albumTracks; // harness-only backref, never sent to the app
+      });
+
+      var ME = {
+        id: "harness_user",
+        display_name: "Oyente de prueba",
+        email: "oyente@example.com", // placeholder — not a real address
+        country: "AR",
+        product: PREMIUM ? "premium" : "free",
+      };
+
+      var PLAYLISTS = [
+        { id: "pl-favoritas", name: "Mis favoritas 2026", owner: { id: ME.id, display_name: ME.display_name }, images: coverImages("pl-favoritas"), tracks: { total: 10 }, __tracks: ALL_TRACKS.slice(0, 10) },
+        { id: "pl-programar", name: "Para programar", owner: { id: ME.id, display_name: ME.display_name }, images: coverImages("pl-programar"), tracks: { total: 8 }, __tracks: ALL_TRACKS.slice(10, 18) },
+        { id: "pl-esencial", name: "Rock nacional esencial", owner: { id: ME.id, display_name: ME.display_name }, images: coverImages("pl-esencial"), tracks: { total: ALL_TRACKS.length }, __tracks: ALL_TRACKS.slice() },
+      ];
+
+      // --- seed localStorage in storage.js's exact v2 schema ------------------
+      // Writing the persisted shape directly (instead of replaying library.js's
+      // import calls through a second module import of it) keeps this harness
+      // a pure "what the browser already has saved" fixture — the same thing
+      // storage.js itself reads on every real page load.
+      function buildLibrarySeed() {
+        var tracks = {};
+        var albums = {};
+        var pool = [];
+        ALL_TRACKS.forEach(function (t) {
+          tracks[t.id] = {
+            id: t.id,
+            name: t.name,
+            artists: t.artists.map(function (a) { return { id: a.id, name: a.name }; }),
+            albumId: t.album.id,
+            duration_ms: t.duration_ms,
+            uri: t.uri,
+          };
+          pool.push(t.id);
+        });
+        ALBUMS.forEach(function (a) {
+          albums[a.id] = {
+            id: a.id,
+            name: a.name,
+            type: a.album_type,
+            artists: a.artists.map(function (x) { return { id: x.id, name: x.name }; }),
+            release_date: a.release_date,
+            total_tracks: a.total_tracks,
+            images: a.images,
+            fetchedAt: new Date().toISOString(), // "fresh" so isStaleCover() never fires a surprise refetch mid-screenshot
+            tracks: null, // lazily filled by /albums/{id}/tracks on first Game 2 / round album-card open, same as the real app
+          };
+        });
+        return { version: 2, fetchedAt: new Date().toISOString(), tracks: tracks, albums: albums, pool: EMPTY ? [] : pool };
+      }
+
+      localStorage.setItem("deoido.v1.library", JSON.stringify(buildLibrarySeed()));
+
+      if (AUTHED) {
+        localStorage.setItem("deoido.v1.tokens", JSON.stringify({
+          access_token: "harness-fake-access-token",
+          refresh_token: "harness-fake-refresh-token",
+          expires_at: Date.now() + 24 * 3600 * 1000, // far enough out that auth.getAccessToken() never tries a real refresh
+          scopes: [
+            "streaming", "user-read-email", "user-read-private",
+            "user-read-playback-state", "user-modify-playback-state",
+            "playlist-read-private", "playlist-read-collaborative",
+            "user-library-read", "user-top-read",
+          ],
+        }));
+      }
+
+      // --- fake Web Playback SDK ----------------------------------------------
+      // player.js's loadSdk() only injects the real <script src=SDK_URL> when
+      // window.Spotify.Player is missing, so defining it here — before main.js
+      // (and therefore player.js) ever executes — means the real
+      // sdk.scdn.co script is never requested at all.
+      window.__harnessPremium = PREMIUM;
+
+      function HarnessFakePlayer(opts) {
+        this._opts = opts || {};
+        this._listeners = {};
+        this._paused = true;
+        this._position = 0;
+        this._anchor = null;
+        this._volume = typeof this._opts.volume === "number" ? this._opts.volume : 0.8;
+        // Bridge for the fetch stub's PUT /me/player/play handler below: on
+        // real Spotify that request is what makes the backend start pushing
+        // audio to the device, which is what the SDK would then observe
+        // through getCurrentState(). There is only ever one player instance
+        // per page (player.js's initPlayer() is idempotent), so a single
+        // global slot is enough to bridge "network" and "SDK" fakes.
+        window.__harnessPlayerInstance = this;
+      }
+      HarnessFakePlayer.prototype.addListener = function (event, cb) {
+        (this._listeners[event] = this._listeners[event] || []).push(cb);
+      };
+      HarnessFakePlayer.prototype.removeListener = function (event, cb) {
+        var arr = this._listeners[event];
+        if (!arr) return;
+        var i = arr.indexOf(cb);
+        if (i !== -1) arr.splice(i, 1);
+      };
+      HarnessFakePlayer.prototype._emit = function (event, payload) {
+        var cbs = this._listeners[event] || [];
+        for (var i = 0; i < cbs.length; i++) {
+          try { cbs[i](payload); } catch (e) { /* a real SDK would not let a listener crash its own dispatch */ }
+        }
+      };
+      HarnessFakePlayer.prototype.connect = function () {
+        var self = this;
+        // Short async delay so "conectando" is at least momentarily real,
+        // per the task's own "resolve after a short delay" instruction —
+        // this is not simulating real audio, just the SDK's device handshake.
+        setTimeout(function () {
+          self._emit("ready", { device_id: "harness-device-1" });
+          if (!window.__harnessPremium) {
+            // account_error is the one player.js listener that flips
+            // isPremium() to false; a Free account still gets a connected
+            // device (hence "ready" above), it just cannot stream through it.
+            setTimeout(function () { self._emit("account_error", {}); }, 120);
+          }
+        }, 60);
+        return Promise.resolve(true);
+      };
+      HarnessFakePlayer.prototype.disconnect = function () { return Promise.resolve(); };
+      HarnessFakePlayer.prototype._currentPosition = function () {
+        if (this._paused || this._anchor == null) return this._position;
+        return this._position + (Date.now() - this._anchor);
+      };
+      HarnessFakePlayer.prototype.getCurrentState = function () {
+        return Promise.resolve({
+          paused: this._paused,
+          position: this._currentPosition(),
+          duration: 9999999,
+          track_window: { current_track: {} },
+        });
+      };
+      HarnessFakePlayer.prototype.seek = function (ms) {
+        this._position = Math.max(0, ms);
+        if (!this._paused) this._anchor = Date.now();
+        return Promise.resolve();
+      };
+      HarnessFakePlayer.prototype.pause = function () {
+        if (!this._paused) this._position = this._currentPosition();
+        this._paused = true;
+        this._anchor = null;
+        return Promise.resolve();
+      };
+      HarnessFakePlayer.prototype.resume = function () {
+        this._paused = false;
+        this._anchor = Date.now();
+        return Promise.resolve();
+      };
+      HarnessFakePlayer.prototype.activateElement = function () { return Promise.resolve(); };
+      HarnessFakePlayer.prototype.setVolume = function (v) { this._volume = v; return Promise.resolve(); };
+      HarnessFakePlayer.prototype.getVolume = function () { return Promise.resolve(this._volume); };
+      // Called from the fetch stub when PUT /me/player/play succeeds — see below.
+      HarnessFakePlayer.prototype.__simulateServerPlay = function (positionMs) {
+        this._position = Math.max(0, positionMs || 0);
+        this._paused = false;
+        this._anchor = Date.now();
+      };
+
+      window.Spotify = { Player: HarnessFakePlayer };
+
+      // --- fake fetch: Spotify Web API + LRCLIB, everything else passes through
+      var REAL_FETCH = window.fetch.bind(window);
+
+      function json(body, status) {
+        // Albums carry a harness-only __tracks backref (used by the
+        // /albums/{id}/tracks and /playlists/{id}/items handlers below), and
+        // each track carries a full `.album` object — so `track.album.__tracks`
+        // loops back to the same track objects. Stringifying that straight
+        // throws "Converting circular structure to JSON". The replacer drops
+        // every "__"-prefixed key before JSON.stringify ever recurses into it,
+        // which breaks the cycle instead of just hiding it after the fact.
+        var text = JSON.stringify(body, function (key, value) {
+          return key.indexOf("__") === 0 ? undefined : value;
+        });
+        return Promise.resolve(new Response(text, {
+          status: status || 200,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+
+      function searchCatalog(q) {
+        var needle = String(q || "").trim().toLowerCase();
+        function hit(s) { return !needle || String(s || "").toLowerCase().indexOf(needle) !== -1; }
+        return {
+          tracks: { items: ALL_TRACKS.filter(function (t) { return hit(t.name) || t.artists.some(function (a) { return hit(a.name); }); }).slice(0, 10) },
+          albums: { items: ALBUMS.filter(function (a) { return hit(a.name) || a.artists.some(function (x) { return hit(x.name); }); }).slice(0, 10) },
+          artists: { items: ARTISTS.filter(function (a) { return hit(a.name); }).slice(0, 10) },
+          playlists: { items: [] },
+        };
+      }
+
+      // Deliberately NOT real song lyrics (would reproduce copyrighted text for
+      // no reason) — placeholder verse/chorus shaped text that only needs to
+      // exercise lyrics-engine.js's tokenizer/masking/guessing UI.
+      var PLACEHOLDER_LYRICS =
+        "Un verso de prueba para el harness\n" +
+        "Otra línea que nadie va a cantar\n" +
+        "Solo existe para llenar la letra\n" +
+        "Y comprobar que el juego puede andar\n" +
+        "\n" +
+        "Segunda estrofa de relleno acá\n" +
+        "Palabras huecas nada más que eso\n" +
+        "El harness no reproduce nada real\n" +
+        "Es solo texto para hacer un test";
+
+      function handleLrclib(u) {
+        if (u.pathname === "/api/get") {
+          return json({ plainLyrics: PLACEHOLDER_LYRICS, syncedLyrics: null, instrumental: false });
+        }
+        if (u.pathname === "/api/search") {
+          return json([{
+            trackName: u.searchParams.get("track_name") || "",
+            artistName: u.searchParams.get("artist_name") || "",
+            plainLyrics: PLACEHOLDER_LYRICS, instrumental: false, duration: 220,
+          }]);
+        }
+        return json([]);
+      }
+
+      function handleSpotifyApi(u, method, init) {
+        var path = u.pathname.replace(/^\/v1/, "");
+        var m;
+
+        if (path === "/me" && method === "GET") return json(ME);
+
+        if (path === "/me/playlists" && method === "GET") {
+          return json({ items: PLAYLISTS, next: null, total: PLAYLISTS.length });
+        }
+
+        if ((m = path.match(/^\/playlists\/([^/]+)\/items$/)) && method === "GET") {
+          var pl1 = PLAYLISTS.filter(function (p) { return p.id === m[1]; })[0];
+          var items1 = pl1 ? pl1.__tracks.map(function (t) { return { item: t }; }) : [];
+          return json({ items: items1, next: null, total: pl1 ? pl1.tracks.total : 0 });
+        }
+        if ((m = path.match(/^\/playlists\/([^/]+)$/)) && method === "GET") {
+          var pl2 = PLAYLISTS.filter(function (p) { return p.id === m[1]; })[0];
+          return pl2 ? json(pl2) : json({ error: { status: 404, message: "Not found" } }, 404);
+        }
+
+        if (path === "/me/tracks" && method === "GET") {
+          return json({ items: ALL_TRACKS.slice(0, 20).map(function (t) { return { item: t }; }), next: null, total: 20 });
+        }
+        if (path === "/me/top/tracks" && method === "GET") {
+          return json({ items: ALL_TRACKS.slice(0, 15), next: null, total: 15 });
+        }
+        if (path === "/search" && method === "GET") {
+          return json(searchCatalog(u.searchParams.get("q")));
+        }
+        if ((m = path.match(/^\/tracks\/([^/]+)$/)) && method === "GET") {
+          var t = TRACK_BY_ID[m[1]];
+          return t ? json(t) : json({ error: { status: 404, message: "Not found" } }, 404);
+        }
+        if ((m = path.match(/^\/artists\/([^/]+)\/albums$/)) && method === "GET") {
+          var artistId = m[1];
+          var albs = ALBUMS.filter(function (a) { return a.artists.some(function (ar) { return ar.id === artistId; }); });
+          return json({ items: albs, next: null, total: albs.length });
+        }
+        if ((m = path.match(/^\/artists\/([^/]+)$/)) && method === "GET") {
+          var a = ARTIST_BY_ID[m[1]];
+          return a ? json(a) : json({ error: { status: 404, message: "Not found" } }, 404);
+        }
+        if ((m = path.match(/^\/albums\/([^/]+)\/tracks$/)) && method === "GET") {
+          var alb1 = ALBUM_BY_ID[m[1]];
+          var items2 = alb1 ? alb1.__tracks.map(function (tr) {
+            return { id: tr.id, name: tr.name, artists: tr.artists, duration_ms: tr.duration_ms, track_number: tr.track_number };
+          }) : [];
+          return json({ items: items2, next: null });
+        }
+        if ((m = path.match(/^\/albums\/([^/]+)$/)) && method === "GET") {
+          var alb2 = ALBUM_BY_ID[m[1]];
+          return alb2 ? json(alb2) : json({ error: { status: 404, message: "Not found" } }, 404);
+        }
+        if (path === "/me/player/play" && method === "PUT") {
+          if (!window.__harnessPremium) {
+            return json({ error: { status: 403, message: "Player command failed: Premium required", reason: "PREMIUM_REQUIRED" } }, 403);
+          }
+          try {
+            var body = init && init.body ? JSON.parse(init.body) : {};
+            if (window.__harnessPlayerInstance) window.__harnessPlayerInstance.__simulateServerPlay(body.position_ms || 0);
+          } catch (e) { /* malformed body: nothing to simulate, still ack the PUT */ }
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+
+        console.warn("[harness] unhandled Spotify API request (stub gap):", method, path);
+        return json({ error: { status: 404, message: "harness: unmapped endpoint " + path } }, 404);
+      }
+
+      window.fetch = function harnessFetch(input, init) {
+        var url = typeof input === "string" ? input : (input && input.url) || String(input);
+        var u = null;
+        try { u = new URL(url, location.href); } catch (e) { u = null; }
+        var method = (init && init.method) || "GET";
+
+        if (u && u.origin === "https://api.spotify.com") return handleSpotifyApi(u, method, init);
+        if (u && u.origin === "https://lrclib.net") return handleLrclib(u);
+        // Fonts and picsum covers: real network (confirmed reachable — see
+        // coverImages() above), so the baseline looks like production.
+        return REAL_FETCH(input, init);
+      };
+    })();
+  </script>
+
+  <!-- The real app, unmodified — identical to how index.html loads it. -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
