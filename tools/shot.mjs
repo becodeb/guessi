@@ -124,12 +124,11 @@ const TARGETS = [
 
   { name: "library", query: {}, hash: hashFor("/library"), wait: ".media-grid .media-card" },
 
-  { name: "hub", query: {}, hash: hashFor("/juegos"), wait: ".hub-grid" },
-  // renderHub() in main.js has no empty-library branch at all — it renders
-  // the same cards regardless of pool size, so this is expected to look
-  // identical to "hub". Captured anyway because the task asked for it, and
-  // because that (lack of an empty state on the hub) is itself worth seeing.
-  { name: "hub-empty", query: { empty: "1" }, hash: hashFor("/juegos"), wait: ".hub-grid" },
+  { name: "hub", query: {}, hash: hashFor("/juegos"), wait: ".hub-posters" },
+  // renderHub() (T2) adds an empty-library panel above the poster wall when
+  // the pool is 0; the posters themselves still render underneath it, so
+  // ".hub-posters" is the right wait selector for this target too.
+  { name: "hub-empty", query: { empty: "1" }, hash: hashFor("/juegos"), wait: ".hub-posters" },
   // Bonus: the actually-informative empty state lives in each GAME view, not
   // the hub. round-game.js is the clearest example of it.
   { name: "ronda-empty", query: { empty: "1" }, hash: hashFor("/juegos/ronda"), wait: ".import-guide" },

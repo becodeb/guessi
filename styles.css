@@ -1,28 +1,76 @@
 /* ==========================================================================
-   de oído — dark-first single theme (design D9). Tokens, components, views.
-   Fonts: Bricolage Grotesque (display) + Karla (text).
-   Radius scale (locked): cards 16 · inputs 10 · buttons/chips pill · covers 12.
+   de oído — "Afiche": the chrome is a quiet wall at night; posters (fluorescent
+   paper, heavy condensed type) carry every burst of color. Tokens, components,
+   views. Fonts: Archivo (display/poster, self-hosted variable) + Karla (text).
    Motion: only transform/opacity/filter animate; reduced-motion collapses all.
    ========================================================================== */
 
 :root {
-  --bg: #121110;
-  --surface: #1c1a18;
-  --surface-2: #26231f;
-  --line: #3a3631;
-  --text: #f2ede4;
-  --text-dim: #a89f92;
-  --accent: #3ecf8e;
-  --accent-dim: #2a9d6f;
-  --danger: #e5604d;
+  /* Wall: the chrome itself, always quiet. */
+  --wall: #1b1c1f;
+  --wall-raised: #232428;
+  --field: #2a2b30;
+  --line: #38393f;
+  --line-strong: #4b4c53;
 
-  --radius-card: 16px;
+  /* Text on the wall. */
+  --chalk: #efece5;
+  --chalk-dim: #a6a39c;
+  /* Text on paper (always dark — every poster color below is light enough). */
+  --ink: #141312;
+
+  /* Posters: five fluorescent papers, no other saturated color exists. */
+  --paper-pink: #ff5ea8;
+  --paper-yellow: #f5e642;
+  --paper-orange: #ff8a3d;
+  --paper-cyan: #62d0f2;
+  --paper-white: #f1eee6;
+
+  /* Semantic (guess verdicts only). */
+  --ok: #7ee787;
+  --bad: #ff6159;
+  --near: #f5e642;
+
+  /* Per-game identity: main.js route() sets [data-game] on <body> for the
+     four game routes; each maps to one paper below. Defaults to chalk, so
+     any chrome using var(--game, var(--chalk)) is quiet outside a game. */
+  --game: var(--chalk);
+
+  /* Legacy names: rules not touched by the T2 visual pass (round game,
+     library, dialogs) still read these. Redesigned rules use the tokens
+     above directly — there is no single app-wide accent anymore, so --accent
+     itself is retired rather than aliased (see the per-rule audit in git
+     history / odd/tasks/juegos-y-ui.md). */
+  --bg: var(--wall);
+  --surface: var(--wall-raised);
+  --surface-2: var(--field);
+  --text: var(--chalk);
+  --text-dim: var(--chalk-dim);
+  --danger: var(--bad);
+
+  /* Shape: paper = 2px (a cut sheet, barely rounded), panels = 14px,
+     fields = 10px, interactive controls (buttons, chips) = pill. */
+  --radius-paper: 2px;
+  --radius-panel: 14px;
+  --radius-card: var(--radius-panel);
   --radius-input: 10px;
   --radius-cover: 12px;
   --radius-pill: 999px;
 
-  --font-display: "Bricolage Grotesque", "Arial Black", sans-serif;
+  --shadow-paper: 0 1px 0 rgb(0 0 0 / .3), 0 14px 28px -12px rgb(0 0 0 / .7);
+
+  --font-display: "Archivo", "Arial Narrow", sans-serif;
   --font-text: "Karla", "Segoe UI", sans-serif;
+
+  /* Type scale: 13/14/16(body)/18/21/28, plus fluid heading and poster sizes. */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.125rem;
+  --text-lg: 1.3125rem;
+  --text-xl: 1.75rem;
+  --text-h1: clamp(2.25rem, 4vw, 3rem);
+  --text-poster: clamp(2.75rem, 7vw, 4.5rem);
 
   --gutter: clamp(16px, 4vw, 32px);
   --gap: 16px;
@@ -30,10 +78,116 @@
   --gap-xl: 32px;
   --section-gap: 40px;
 
-  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --dur-press: 110ms;
+  --dur-state: 220ms;
+  --dur-reveal: 420ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
   --ease-pop: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-paste: cubic-bezier(.34, 1.56, .64, 1);
 
   color-scheme: dark;
+}
+
+/* Per-game identity: set on <body> by route() for /juegos/{ronda,clip,album,año}. */
+[data-game="ronda"] { --game: var(--paper-pink); }
+[data-game="clip"] { --game: var(--paper-yellow); }
+[data-game="album"] { --game: var(--paper-orange); }
+[data-game="year"] { --game: var(--paper-cyan); }
+
+/* --------------------------------------------------------------------------
+   Paper: the one reusable "poster" surface. A data-paper value picks the
+   color; --tilt (deg, set per usage) rotates it slightly off the grid.
+   -------------------------------------------------------------------------- */
+
+.paper {
+  --paper: var(--paper-white);
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: var(--radius-paper);
+  box-shadow: var(--shadow-paper);
+  transform: rotate(var(--tilt, 0deg));
+}
+
+.paper[data-paper="pink"] { --paper: var(--paper-pink); }
+.paper[data-paper="yellow"] { --paper: var(--paper-yellow); }
+.paper[data-paper="orange"] { --paper: var(--paper-orange); }
+.paper[data-paper="cyan"] { --paper: var(--paper-cyan); }
+.paper[data-paper="white"] { --paper: var(--paper-white); }
+
+/* Poster type: heavy condensed Archivo, uppercase. Only ever used on paper. */
+.poster-title {
+  display: block;
+  font-family: var(--font-display);
+  font-stretch: 62.5%;
+  font-weight: 900;
+  line-height: .9;
+  letter-spacing: -0.01em;
+  word-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   Self-hosted variable fonts (assets/fonts/, latin + latin-ext, downloaded
+   from Google Fonts' CSS2 API — see odd/tasks/juegos-y-ui.md for the exact
+   request). Archivo carries the full wdth/wght range for both the poster
+   type and headings; Karla carries upright + italic.
+   -------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62.5% 125%;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62.5% 125%;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Karla";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./assets/fonts/karla-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Karla";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./assets/fonts/karla-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Karla";
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./assets/fonts/karla-italic-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Karla";
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./assets/fonts/karla-italic-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 * {
@@ -65,9 +219,15 @@ body {
 
 h1, h2, h3 {
   font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
   line-height: 1.1;
-  letter-spacing: -0.01em;
+  word-spacing: .1em;
   margin: 0;
+}
+
+h1 {
+  letter-spacing: -0.01em;
 }
 
 p {
@@ -75,7 +235,7 @@ p {
 }
 
 a {
-  color: var(--accent);
+  color: var(--chalk);
 }
 
 button {
@@ -84,14 +244,15 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--chalk);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
+/* A highlighter over paper, not the old accent. */
 ::selection {
-  background: var(--accent);
-  color: var(--bg);
+  background: var(--paper-yellow);
+  color: var(--ink);
 }
 
 /* --------------------------------------------------------------------------
@@ -167,10 +328,12 @@ button {
 .display {
   font-family: var(--font-display);
   font-weight: 800;
+  font-stretch: 75%;
+  word-spacing: .1em;
 }
 
 .display--lg {
-  font-size: clamp(2rem, 5vw, 3rem);
+  font-size: var(--text-h1);
 }
 
 .display--md {
@@ -210,21 +373,21 @@ button {
   padding: 0 20px;
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--field);
+  color: var(--chalk);
   font-size: 0.95rem;
   font-weight: 600;
-  transition: background 160ms var(--ease-out), transform 120ms var(--ease-out),
-    opacity 160ms var(--ease-out), border-color 160ms var(--ease-out);
+  transition: background var(--dur-state) var(--ease-out), transform var(--dur-press) var(--ease-out),
+    opacity var(--dur-state) var(--ease-out), border-color var(--dur-state) var(--ease-out);
   white-space: nowrap;
 }
 
 .btn:hover {
-  background: #2e2a25;
+  background: var(--line);
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: translateY(1px) scale(.98);
 }
 
 .btn:disabled {
@@ -234,28 +397,29 @@ button {
 }
 
 .btn--primary {
-  background: var(--accent);
-  color: #101512;
+  background: var(--game, var(--chalk));
+  color: var(--ink);
 }
 
 .btn--primary:hover {
-  background: #57dca2;
+  background: color-mix(in srgb, var(--game, var(--chalk)) 85%, white);
 }
 
 .btn--ghost {
   background: transparent;
-  border-color: var(--line);
+  border-color: var(--line-strong);
+  color: var(--chalk);
 }
 
 .btn--ghost:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
+  border-color: var(--game, var(--chalk));
+  color: var(--game, var(--chalk));
 }
 
 .btn--danger {
   background: transparent;
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .btn--sm {
@@ -297,26 +461,27 @@ button {
   padding: 0 14px;
   border-radius: var(--radius-input);
   border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--field);
+  color: var(--chalk);
   font-family: var(--font-text);
   font-size: 1rem;
-  transition: border-color 160ms var(--ease-out);
+  transition: border-color var(--dur-state) var(--ease-out);
 }
 
+/* Verified >= 4.5:1 on --field (chalk-dim #a6a39c on #2a2b30 ~5.6:1) — no
+   extra opacity dimming on top, that would drop it back under AA. */
 .input::placeholder {
-  color: var(--text-dim);
-  opacity: 0.8;
+  color: var(--chalk-dim);
 }
 
 .input:hover {
-  border-color: #4a453e;
+  border-color: var(--line-strong);
 }
 
 .input:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--chalk);
   outline-offset: 2px;
-  border-color: var(--accent);
+  border-color: var(--chalk);
 }
 
 .input[disabled] {
@@ -359,14 +524,14 @@ button {
 }
 
 .guess__input:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--chalk);
   outline-offset: 2px;
 }
 
 .guess--correct .guess__input {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #101512;
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--ink);
   font-weight: 700;
 }
 
@@ -389,15 +554,15 @@ button {
 
 @keyframes verdict-flash {
   0% {
-    border-color: var(--danger);
-    background: rgba(229, 96, 77, 0.12);
+    border-color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 12%, transparent);
   }
   100% {
     border-color: var(--line);
   }
 }
 
-/* Artist slots (open dashed → filled accent chip) */
+/* Artist slots (open dashed → filled correct chip) */
 .slot {
   display: flex;
   align-items: center;
@@ -406,28 +571,28 @@ button {
   padding: 0 14px;
   border-radius: var(--radius-pill);
   border: 1px dashed var(--line);
-  color: var(--text-dim);
+  color: var(--chalk-dim);
   font-weight: 500;
-  transition: border-color 160ms var(--ease-out), background 160ms var(--ease-out);
+  transition: border-color var(--dur-state) var(--ease-out), background var(--dur-state) var(--ease-out);
 }
 
 .slot--filled {
   border-style: solid;
-  border-color: var(--accent);
-  background: rgba(62, 207, 142, 0.12);
-  color: var(--accent);
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
   font-weight: 700;
 }
 
 .slot--incorrect {
   border-style: solid;
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--bad);
+  color: var(--bad);
   animation: verdict-flash 160ms var(--ease-pop);
 }
 
 /* --------------------------------------------------------------------------
-   Cards (radius 16)
+   Cards (panel radius)
    -------------------------------------------------------------------------- */
 
 .card {
@@ -440,8 +605,8 @@ button {
 
 /* Card whose challenge was solved: soft green edge so progress reads at a glance. */
 .card--solved {
-  border-color: var(--accent-dim);
-  box-shadow: 0 0 0 1px rgba(62, 207, 142, 0.12);
+  border-color: var(--ok);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 12%, transparent);
 }
 
 /* --------------------------------------------------------------------------
@@ -459,18 +624,18 @@ button {
 }
 
 .chip--ok {
-  background: rgba(62, 207, 142, 0.14);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
 }
 
 .chip--muted {
-  background: var(--surface-2);
-  color: var(--text-dim);
+  background: var(--field);
+  color: var(--chalk-dim);
 }
 
 .chip--solved {
-  background: var(--accent);
-  color: #101512;
+  background: var(--ok);
+  color: var(--ink);
 }
 
 .dot {
@@ -482,7 +647,9 @@ button {
 }
 
 /* --------------------------------------------------------------------------
-   Banners
+   Banners and toasts share one rule: a neutral raised surface, chalk text,
+   and only the icon colored by what the message means. No tinted surface,
+   no colored border stripe.
    -------------------------------------------------------------------------- */
 
 .banner {
@@ -490,39 +657,32 @@ button {
   align-items: flex-start;
   gap: 12px;
   padding: 14px 18px;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-panel);
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--wall-raised);
+  color: var(--chalk);
   font-size: 0.95rem;
 }
 
 .banner .icon {
   margin-top: 2px;
   flex: none;
+  color: var(--chalk-dim);
 }
 
-.banner--premium {
-  border-color: var(--accent-dim);
-  background: rgba(62, 207, 142, 0.08);
-  color: var(--accent);
+/* Premium is about the audio games: ties to whichever game is on screen,
+   chalk elsewhere. */
+.banner--premium .icon {
+  color: var(--game, var(--chalk));
 }
 
-.banner--rate {
-  border-color: #c9a45c;
-  background: rgba(201, 164, 92, 0.08);
-  color: #d9b878;
+.banner--rate .icon,
+.banner--session .icon {
+  color: var(--near);
 }
 
-.banner--error {
-  border-color: var(--danger);
-  background: rgba(229, 96, 77, 0.08);
-  color: var(--danger);
-}
-
-.banner--session {
-  border-color: #c9a45c;
-  background: rgba(201, 164, 92, 0.08);
-  color: #d9b878;
+.banner--error .icon {
+  color: var(--bad);
 }
 
 .banner__body {
@@ -539,52 +699,51 @@ button {
 .nav {
   display: flex;
   align-items: center;
-  gap: var(--gap-lg);
-  padding: 14px 0;
+  gap: var(--gap);
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
+  min-height: 64px;
 }
 
 .nav__logo {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.25rem;
-  color: var(--text);
+  display: inline-flex;
+  flex: none;
   text-decoration: none;
-  letter-spacing: -0.01em;
 }
 
-.nav__logo .dot {
-  display: inline-block;
-  margin-right: 6px;
-  vertical-align: 2px;
+/* The brand mark: a small paper sticker, always on. */
+.nav__logo-sticker {
+  --tilt: -3deg;
+  padding: 4px 8px;
+  font-size: var(--text-md);
 }
 
 .nav__links {
   display: flex;
-  gap: 4px;
-  margin-left: 8px;
+  gap: 2px;
 }
 
 .nav__link {
-  padding: 8px 14px;
+  padding: 8px 10px;
   border-radius: var(--radius-pill);
-  color: var(--text-dim);
+  color: var(--chalk-dim);
   text-decoration: none;
   font-weight: 600;
   font-size: 0.95rem;
-  transition: color 160ms var(--ease-out), background 160ms var(--ease-out);
+  line-height: 1;
+  transition: color var(--dur-state) var(--ease-out), background var(--dur-state) var(--ease-out);
 }
 
 .nav__link:hover {
-  color: var(--text);
-  background: var(--surface);
+  color: var(--chalk);
+  background: var(--wall-raised);
 }
 
 .nav__link--active {
-  color: var(--text);
+  color: var(--chalk);
   text-decoration: underline;
   text-underline-offset: 6px;
-  text-decoration-color: var(--accent);
+  text-decoration-color: var(--game, var(--chalk));
   text-decoration-thickness: 2px;
 }
 
@@ -593,25 +752,38 @@ button {
 }
 
 .nav__logout {
-  color: var(--text-dim);
+  color: var(--chalk-dim);
   background: none;
   border: none;
   display: inline-flex;
   align-items: center;
+  flex: none;
   gap: 6px;
   font-size: 0.9rem;
   font-weight: 600;
-  padding: 8px 12px;
+  line-height: 1;
+  padding: 8px 10px;
   border-radius: var(--radius-pill);
-  transition: color 160ms var(--ease-out);
+  transition: color var(--dur-state) var(--ease-out);
 }
 
 .nav__logout:hover {
-  color: var(--danger);
+  color: var(--bad);
+}
+
+/* Below ~640px the nav has no room for "Cerrar sesión" beside both links and
+   the brand sticker (this used to wrap to a second line) — the icon plus its
+   aria-label carries the same action. */
+@media (max-width: 640px) {
+  .nav__logout-label {
+    display: none;
+  }
 }
 
 /* --------------------------------------------------------------------------
-   Login view
+   Login view: text left, a collage of the four game posters on the right —
+   the app's one orchestrated page-load moment. Mobile stacks the collage
+   into a compact cluster above the text.
    -------------------------------------------------------------------------- */
 
 .login {
@@ -620,7 +792,22 @@ button {
   align-items: center;
 }
 
-.login__inner {
+.login__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-lg);
+  width: 100%;
+  align-items: center;
+}
+
+@media (min-width: 860px) {
+  .login__grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--gap-xl) var(--section-gap);
+  }
+}
+
+.login__text {
   max-width: 560px;
 }
 
@@ -631,7 +818,7 @@ button {
 
 .login__sub {
   font-size: 1.15rem;
-  color: var(--text-dim);
+  color: var(--chalk-dim);
   max-width: 34ch;
   margin-bottom: var(--gap-xl);
 }
@@ -643,111 +830,196 @@ button {
   align-items: flex-start;
 }
 
+/* Mobile: a small 2x2 cluster, never a single row of four (would overflow a
+   360px screen), tilts barely there so it stays compact above the fold. */
+.login__collage {
+  order: -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 6px;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.login__collage .poster-title {
+  font-size: 1rem;
+}
+
+.login__collage-item {
+  padding: 10px 12px;
+}
+
+.login__collage-item--ronda { --tilt: -1deg; }
+.login__collage-item--clip { --tilt: 1deg; margin-top: 6px; }
+.login__collage-item--album { --tilt: -1deg; margin-top: -6px; }
+.login__collage-item--year { --tilt: 1deg; }
+
+@media (min-width: 860px) {
+  .login__collage {
+    order: 0;
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    gap: 18px 0;
+    max-width: 420px;
+    margin: 0;
+    justify-self: end;
+  }
+
+  .login__collage .poster-title {
+    font-size: 1.6rem;
+  }
+
+  .login__collage-item {
+    padding: 20px 22px;
+  }
+
+  .login__collage-item--ronda { --tilt: -4deg; margin-top: 0; margin-right: -18px; z-index: 4; }
+  .login__collage-item--clip { --tilt: 3deg; margin-top: 34px; z-index: 3; }
+  .login__collage-item--album { --tilt: -3deg; margin-top: -22px; margin-left: -18px; z-index: 2; }
+  .login__collage-item--year { --tilt: 5deg; margin-top: 30px; z-index: 1; }
+}
+
+/* The one orchestrated page-load moment: staggered paste-in, every time the
+   login view mounts (there is no "seen before" state pre-auth). */
+.login__collage-item {
+  animation: paste-in var(--dur-reveal) var(--ease-paste) both;
+}
+
+.login__collage-item--ronda { animation-delay: 0ms; }
+.login__collage-item--clip { animation-delay: 80ms; }
+.login__collage-item--album { animation-delay: 160ms; }
+.login__collage-item--year { animation-delay: 240ms; }
+
 /* --------------------------------------------------------------------------
-   Hub
+   Hub: a poster wall, not a card grid.
    -------------------------------------------------------------------------- */
 
-.hub-grid {
+.container--hub {
+  max-width: 1120px;
+}
+
+.hub-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--section-gap);
+}
+
+.hub-header__sub {
+  color: var(--chalk-dim);
+}
+
+.hub-header__sub a {
+  color: var(--chalk);
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.hub-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap);
+  padding: var(--gap-xl);
+  margin-bottom: var(--gap-lg);
+  background: var(--wall-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.hub-posters {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: var(--gap-lg);
 }
 
-@media (max-width: 768px) {
-  .hub-grid {
-    grid-template-columns: 1fr;
+@media (min-width: 640px) and (max-width: 1023px) {
+  .hub-posters {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-.hub-card {
+/* Asymmetric 12-column wall: Ronda + Décima fill row 1 (7+5), Portada + Año
+   fill row 2 (5+7). DOM order (ronda, clip, album, year) must match, since
+   these spans rely on the grid's normal auto-flow to land each row. */
+@media (min-width: 1024px) {
+  .hub-posters {
+    grid-template-columns: repeat(12, 1fr);
+  }
+
+  .hub-poster--ronda { grid-column: span 7; }
+  .hub-poster--clip { grid-column: span 5; }
+  .hub-poster--album { grid-column: span 5; }
+  .hub-poster--year { grid-column: span 7; }
+}
+
+.hub-poster {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 200px;
   padding: var(--gap-xl);
   text-decoration: none;
-  color: var(--text);
-  transition: border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+  transition: transform var(--dur-state) var(--ease-out);
 }
 
-.hub-card:hover {
-  border-color: var(--accent-dim);
+.hub-poster:hover,
+.hub-poster:focus-visible {
+  transform: translateY(-2px) rotate(0deg);
 }
 
-.hub-card:active {
-  transform: scale(0.99);
+.hub-poster--ronda { --tilt: -2deg; }
+.hub-poster--clip { --tilt: 2deg; }
+.hub-poster--album { --tilt: -3deg; }
+.hub-poster--year { --tilt: 2deg; }
+
+/* Nothing overflows horizontally on a 360-390px screen. */
+@media (max-width: 639px) {
+  .hub-poster--ronda,
+  .hub-poster--album {
+    --tilt: -1deg;
+  }
+
+  .hub-poster--clip,
+  .hub-poster--year {
+    --tilt: 1deg;
+  }
 }
 
-.hub-card--feature {
-  min-height: 300px;
-  justify-content: space-between;
+.hub-poster__title {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
 }
 
-.hub-card--stack {
-  min-height: 140px;
+/* Ronda reads as the biggest poster — largest type, not a bigger card. */
+.hub-poster--ronda .hub-poster__title {
+  font-size: var(--text-poster);
 }
 
-.hub-card__title {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.6rem;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.hub-poster__desc {
+  font-family: var(--font-text);
+  font-weight: 600;
+  font-size: var(--text-base);
+  max-width: 42ch;
 }
 
-.hub-card__num {
-  color: var(--accent);
+/* Empty for now — task T3 fills this with the best-record line. */
+.hub-poster__record {
+  display: block;
+  font-family: var(--font-text);
+  font-weight: 700;
+  font-size: var(--text-sm);
 }
 
-.hub-card__desc {
-  color: var(--text-dim);
+/* First hub visit per session only (sessionStorage flag in main.js) — every
+   later visit renders static. */
+.hub-posters--intro .hub-poster {
+  animation: paste-in var(--dur-reveal) var(--ease-paste) both;
 }
 
-.hub-visual {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 56px;
-}
-
-.hub-visual__bar {
-  width: 7px;
-  border-radius: 4px;
-  background: var(--accent);
-}
-
-.hub-visual__bar:nth-child(1) { height: 34%; }
-.hub-visual__bar:nth-child(2) { height: 58%; }
-.hub-visual__bar:nth-child(3) { height: 80%; }
-.hub-visual__bar:nth-child(4) { height: 100%; }
-.hub-visual__bar:nth-child(5) { height: 64%; }
-.hub-visual__bar:nth-child(6) { height: 42%; }
-
-.hub-blur-tile {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-cover);
-  background: var(--surface-2);
-  filter: blur(4px);
-  border: 1px solid var(--line);
-}
-
-.hub-year {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 2.4rem;
-  color: var(--accent);
-}
-
-.hub-status {
-  display: flex;
-  gap: var(--gap);
-  flex-wrap: wrap;
-  margin-top: var(--gap);
-}
+.hub-posters--intro .hub-poster:nth-child(1) { animation-delay: 0ms; }
+.hub-posters--intro .hub-poster:nth-child(2) { animation-delay: 70ms; }
+.hub-posters--intro .hub-poster:nth-child(3) { animation-delay: 140ms; }
+.hub-posters--intro .hub-poster:nth-child(4) { animation-delay: 210ms; }
 
 /* --------------------------------------------------------------------------
    Clip bar (fills in steps while playing)
@@ -772,7 +1044,7 @@ button {
   height: 100%;
   width: 0%;
   border-radius: var(--radius-pill);
-  background: var(--accent);
+  background: var(--game, var(--chalk));
   transition: width 50ms linear;
 }
 
@@ -813,9 +1085,9 @@ button {
   gap: 10px;
   padding: 14px 18px;
   border-radius: var(--radius-card);
-  background: rgba(62, 207, 142, 0.1);
-  border: 1px solid var(--accent-dim);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  border: 1px solid var(--ok);
+  color: var(--ok);
   font-weight: 700;
 }
 
@@ -872,7 +1144,7 @@ button {
 }
 
 .cover-focus__chip {
-  background: rgba(18, 17, 16, 0.78);
+  background: color-mix(in srgb, var(--wall) 78%, transparent);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   padding: 8px 16px;
@@ -951,7 +1223,7 @@ button {
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 1.2rem;
-  color: var(--accent);
+  color: var(--game, var(--chalk));
   min-width: 96px;
 }
 
@@ -975,9 +1247,9 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--surface-2);
+  background: var(--wall-raised);
   border: 1px solid var(--line);
-  color: var(--text);
+  color: var(--chalk);
   border-radius: var(--radius-pill);
   padding: 10px 18px;
   font-size: 0.925rem;
@@ -986,14 +1258,16 @@ button {
   animation: toast-in 220ms var(--ease-pop) both;
 }
 
-.toast--success {
-  border-color: var(--accent-dim);
-  color: var(--accent);
+.toast .icon {
+  color: var(--chalk-dim);
 }
 
-.toast--error {
-  border-color: var(--danger);
-  color: var(--danger);
+.toast--success .icon {
+  color: var(--ok);
+}
+
+.toast--error .icon {
+  color: var(--bad);
 }
 
 .toast--out {
@@ -1160,7 +1434,7 @@ button {
 
 .pool-panel__filter:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--chalk);
 }
 
 .pool-panel__list {
@@ -1276,9 +1550,9 @@ button {
 }
 
 .search-field__input:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--chalk);
   outline-offset: 2px;
-  border-color: var(--accent);
+  border-color: var(--chalk);
 }
 
 .search-field__input::-webkit-search-cancel-button {
@@ -1334,8 +1608,8 @@ button {
 }
 
 .search-chip:hover:not(:disabled) {
-  border-color: var(--accent-dim);
-  color: var(--accent);
+  border-color: var(--game, var(--chalk));
+  color: var(--game, var(--chalk));
 }
 
 .search-chip:disabled {
@@ -1344,13 +1618,13 @@ button {
 }
 
 .search-chip--active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #101512;
+  background: var(--game, var(--chalk));
+  border-color: var(--game, var(--chalk));
+  color: var(--ink);
 }
 
 .search-chip--active:hover:not(:disabled) {
-  color: #101512;
+  color: var(--ink);
 }
 
 .search-results {
@@ -1402,7 +1676,7 @@ button {
 
 .media-card:hover {
   transform: translateY(-2px);
-  border-color: var(--accent-dim);
+  border-color: var(--game, var(--chalk));
 }
 
 .media-card__cover {
@@ -1534,9 +1808,9 @@ button {
   align-items: center;
   gap: 16px;
   padding: 16px;
-  border: 1px solid var(--accent-dim);
+  border: 1px solid var(--ok);
   border-radius: var(--radius-card);
-  background: rgba(62, 207, 142, 0.06);
+  background: color-mix(in srgb, var(--ok) 6%, transparent);
 }
 
 .link-result__cover {
@@ -1709,7 +1983,7 @@ button {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgba(28, 26, 24, 0.45), var(--surface));
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--wall) 45%, transparent), var(--surface));
   z-index: 0;
 }
 
@@ -1786,7 +2060,7 @@ button {
 
 .sheet__filter:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--chalk);
 }
 
 .sheet__toggles {
@@ -1848,7 +2122,7 @@ button {
 .pick-row__check {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
+  accent-color: var(--game, var(--chalk));
   cursor: pointer;
 }
 
@@ -1857,7 +2131,7 @@ button {
   place-items: center;
   width: 18px;
   height: 18px;
-  color: var(--accent);
+  color: var(--ok);
 }
 
 .pick-row__mark .icon {
@@ -1910,7 +2184,7 @@ button {
 
 .pick-row__tag {
   flex: none;
-  color: var(--accent);
+  color: var(--ok);
   font-size: 0.75rem;
   white-space: nowrap;
 }
@@ -2023,7 +2297,7 @@ button {
 
 .volume input[type="range"] {
   width: 110px;
-  accent-color: var(--accent);
+  accent-color: var(--game, var(--chalk));
 }
 
 .volume input[type="range"]:disabled {
@@ -2076,6 +2350,41 @@ button {
 }
 
 /* --------------------------------------------------------------------------
+   Shared motion keyframes (paste-in used below; shake/pop/tick are for later
+   tasks — reveal, feedback and streak-counter motion — to reuse).
+   -------------------------------------------------------------------------- */
+
+@keyframes paste-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) rotate(calc(var(--tilt, 0deg) - 5deg)) scale(1.06);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(var(--tilt, 0deg)) scale(1);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+@keyframes pop {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+@keyframes tick {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------------------
    Reduced motion: everything collapses to instant (states still update)
    -------------------------------------------------------------------------- */
 
@@ -2084,6 +2393,7 @@ button {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
@@ -2097,6 +2407,13 @@ button {
   }
 
   .skeleton__row {
+    animation: none;
+  }
+
+  /* Staggered entrances (login collage, first-visit hub posters): no delay,
+     no stagger, land at rest immediately. */
+  .login__collage-item,
+  .hub-posters--intro .hub-poster {
     animation: none;
   }
 }
@@ -2225,15 +2542,15 @@ button {
   transition: background 200ms var(--ease-out), border-color 200ms var(--ease-out);
 }
 
-/* Hinted/revealed: settled but not earned — dimmed accent. */
+/* Hinted/revealed: settled but not earned — dimmed game color. */
 .round__seg--partial {
-  background: rgba(62, 207, 142, 0.35);
-  border-color: rgba(62, 207, 142, 0.35);
+  background: color-mix(in srgb, var(--game, var(--chalk)) 35%, transparent);
+  border-color: color-mix(in srgb, var(--game, var(--chalk)) 35%, transparent);
 }
 
 .round__seg--done {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--game, var(--chalk));
+  border-color: var(--game, var(--chalk));
 }
 
 /* The round reads as ONE centered column of cards.
@@ -2469,7 +2786,7 @@ button {
    Collapsible challenge sections (<details class="card round-sec">)
    One card is open on arrival; the rest are a short menu, so the round stops
    being an endless scroll when the player only wants one challenge.
-   Same 16px card radius, same --accent, no new tokens.
+   Same panel radius, same --game/chalk tokens as the rest of the app.
    -------------------------------------------------------------------------- */
 
 .round-sec {
@@ -2526,9 +2843,9 @@ button {
 }
 
 /* Inset ring: the summary spans the card edge to edge, so an outside outline
-   would sit on top of the card border. Matches the global 2px accent ring. */
+   would sit on top of the card border. Matches the global 2px focus ring. */
 .round-sec__head:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--chalk);
   outline-offset: -4px;
 }
 
@@ -2641,8 +2958,8 @@ button {
 }
 
 .cover-mode[aria-pressed="true"] {
-  background: var(--accent);
-  color: #101512;
+  background: var(--game, var(--chalk));
+  color: var(--ink);
 }
 
 /* The art and its "Clics restantes" line move together. */
@@ -2791,8 +3108,8 @@ button {
 }
 
 .ghost-link:hover {
-  color: var(--text);
-  border-color: var(--accent-dim);
+  color: var(--chalk);
+  border-color: var(--game, var(--chalk));
 }
 
 /* --------------------------------------------------------------------------
@@ -2965,15 +3282,16 @@ button {
 }
 
 .lyrics__w--cursor {
-  color: var(--accent);
-  background: rgba(62, 207, 142, 0.12);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--game, var(--chalk));
+  background: color-mix(in srgb, var(--game, var(--chalk)) 12%, transparent);
+  box-shadow: inset 0 -2px 0 var(--game, var(--chalk));
   font-weight: 700;
 }
 
+/* Already revealed and correct. */
 .lyrics__w--known {
-  color: var(--accent-dim);
-  box-shadow: inset 0 -2px 0 var(--accent-dim);
+  color: var(--ok);
+  box-shadow: inset 0 -2px 0 var(--ok);
 }
 
 .lyrics__w--enter {
@@ -3015,31 +3333,3 @@ button {
   align-items: flex-start;
 }
 
-/* --------------------------------------------------------------------------
-   Hub — round feature card + practice label
-   -------------------------------------------------------------------------- */
-
-.hub-section-label {
-  color: var(--text-dim);
-  font-weight: 600;
-  font-size: 0.95rem;
-  margin-top: var(--section-gap);
-}
-
-.hub-round {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.hub-round__dot {
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-}
-
-.hub-round__dot:nth-child(1) { opacity: 1; }
-.hub-round__dot:nth-child(2) { opacity: 0.8; }
-.hub-round__dot:nth-child(3) { opacity: 0.6; }
-.hub-round__dot:nth-child(4) { opacity: 0.4; }

@@ -39,6 +39,11 @@ const ROUTES = {
   "/juegos/ronda": { view: "ronda", render: renderRonda, game: roundGame },
 };
 
+// The four game views, each themed by styles.css's [data-game] selectors
+// (Ronda completa = pink, La primera décima = yellow, Portada borrosa =
+// orange, ¿De qué año? = cyan).
+const GAME_VIEWS = new Set(["ronda", "clip", "album", "year"]);
+
 const app = document.getElementById("app");
 let navHost = null;
 let bannerHost = null;
@@ -77,14 +82,23 @@ function route() {
   current = null;
   appState.view = def.view;
 
+  // Per-game identity (Afiche direction): CSS reads [data-game] off <body> to
+  // theme --game everywhere chrome and view share it (nav underline, buttons,
+  // progress fills), not just inside the view host.
+  if (GAME_VIEWS.has(def.view)) document.body.dataset.game = def.view;
+  else delete document.body.dataset.game;
+
   // The round and the library both lay out in columns: give them the full
-  // wide container instead of the 980px reading cap.
+  // wide container instead of the 980px reading cap. The hub is a poster
+  // wall with its own narrower cap.
   const wide = def.view === "ronda" || def.view === "library";
+  const widthClass = wide ? "container container--wide" : def.view === "hub" ? "container container--hub" : "container";
 
   navHost = renderNav();
   if (wide) navHost.classList.add("container--wide");
-  bannerHost = ui.el("div", { class: wide ? "container container--wide" : "container" });
-  viewHost = ui.el("main", { class: wide ? "container container--wide" : "container" });
+  else if (def.view === "hub") navHost.classList.add("container--hub");
+  bannerHost = ui.el("div", { class: widthClass });
+  viewHost = ui.el("main", { class: widthClass });
   app.replaceChildren(navHost, bannerHost, viewHost);
   updateBanners();
   def.render(viewHost);
@@ -104,12 +118,12 @@ function renderNav() {
   const active = appState.view;
   const nav = ui.el("header", { class: "container" },
     ui.el("nav", { class: "nav", "aria-label": "Principal" },
-      ui.el("a", {
-        class: "nav__logo",
-        href: "#/juegos",
-      },
-        ui.el("span", { class: "dot", "aria-hidden": "true" }),
-        "de oído",
+      ui.el("a", { class: "nav__logo", href: "#/juegos" },
+        ui.el("span", {
+          class: "paper poster-title nav__logo-sticker",
+          "data-paper": "white",
+          text: "de oído",
+        }),
       ),
       authed
         ? ui.el("div", { class: "nav__links" },
@@ -119,9 +133,12 @@ function renderNav() {
         : null,
       ui.el("span", { class: "nav__spacer" }),
       authed
+        // Icon always visible; the label hides under ~640px (styles.css) where
+        // there is no room left beside the brand sticker and both links — the
+        // aria-label keeps the action named for assistive tech either way.
         ? ui.el("button", {
             class: "nav__logout",
-            text: "Cerrar sesión",
+            "aria-label": "Cerrar sesión",
             on: {
               click: () => {
                 player.stop();
@@ -129,7 +146,10 @@ function renderNav() {
                 navigate("#/login");
               },
             },
-          }, ui.icon("logout"))
+          },
+            ui.icon("logout"),
+            ui.el("span", { class: "nav__logout-label", text: "Cerrar sesión" }),
+          )
         : null,
     ),
   );
@@ -301,39 +321,57 @@ const ctx = {
 
 // --- login view ---------------------------------------------------------------------
 
+/** One poster in the login collage: decorative, no link (auth gates every route). */
+function collagePoster(game, paper, title) {
+  return ui.el("span", {
+    class: `paper poster-title login__collage-item login__collage-item--${game}`,
+    "data-paper": paper,
+    "aria-hidden": "true",
+    text: title,
+  });
+}
+
 function renderLogin(view) {
   view.innerHTML = "";
   const inner = ui.el("div", { class: "login" },
-    ui.el("div", { class: "login__inner stack--lg" },
-      ui.el("h1", { class: "display login__hero", text: "Juega de oído" }),
-      ui.el("p", {
-        class: "login__sub",
-        text: "Reconoce canciones de tu biblioteca por un instante de sonido.",
-      }),
-      ui.el("div", { class: "login__actions" },
-        CLIENT_ID === "REPLACE_ME"
-          ? ui.el("div", { class: "banner banner--error" },
-              ui.icon("warn"),
-              ui.el("span", { text: "Falta configurar: copia tu Client ID en src/config.js (ver README)." }),
-            )
-          : null,
-        ui.el("button", {
-          class: "btn btn--primary btn--lg",
-          text: "Iniciar sesión con Spotify",
-          on: {
-            click: () => {
-              if (CLIENT_ID === "REPLACE_ME") {
-                ui.toast("Configura tu Client ID en src/config.js", "error");
-                return;
-              }
-              auth.authorize();
-            },
-          },
-        }, ui.icon("play")),
+    ui.el("div", { class: "login__grid" },
+      ui.el("div", { class: "login__text stack--lg" },
+        ui.el("h1", { class: "display login__hero", text: "Juega de oído" }),
         ui.el("p", {
-          class: "muted-note",
-          text: "Necesitas Spotify Premium para los juegos de audio.",
+          class: "login__sub",
+          text: "Reconoce canciones de tu biblioteca por un instante de sonido.",
         }),
+        ui.el("div", { class: "login__actions" },
+          CLIENT_ID === "REPLACE_ME"
+            ? ui.el("div", { class: "banner banner--error" },
+                ui.icon("warn"),
+                ui.el("span", { text: "Falta configurar: copia tu Client ID en src/config.js (ver README)." }),
+              )
+            : null,
+          ui.el("button", {
+            class: "btn btn--primary btn--lg",
+            text: "Iniciar sesión con Spotify",
+            on: {
+              click: () => {
+                if (CLIENT_ID === "REPLACE_ME") {
+                  ui.toast("Configura tu Client ID en src/config.js", "error");
+                  return;
+                }
+                auth.authorize();
+              },
+            },
+          }, ui.icon("play")),
+          ui.el("p", {
+            class: "muted-note",
+            text: "Necesitas Spotify Premium para los juegos de audio.",
+          }),
+        ),
+      ),
+      ui.el("div", { class: "login__collage" },
+        collagePoster("ronda", "pink", "Ronda completa"),
+        collagePoster("clip", "yellow", "La primera décima"),
+        collagePoster("album", "orange", "Portada borrosa"),
+        collagePoster("year", "cyan", "¿De qué año?"),
       ),
     ),
   );
@@ -342,92 +380,84 @@ function renderLogin(view) {
 
 // --- hub view ---------------------------------------------------------------------------
 
+// Set once the poster paste-in has played this browser session, so returning
+// to the hub (e.g. after a round) renders static instead of replaying it.
+const HUB_SEEN_KEY = "deoido.hub-posters-seen";
+
 function renderHub(view) {
   view.innerHTML = "";
   ensurePlayer();
-  view.append(ui.el("h1", { class: "display display--md", text: "Juegos" }));
 
-  // Volume control (design component inventory; disabled when player off).
-  // Shared with the round's clip card so the two cannot drift apart.
-  const volumeRow = ui.volumeControl(ctx);
+  const poolCount = library.getPoolCount();
+  const firstVisit = !sessionStorage.getItem(HUB_SEEN_KEY);
+  if (firstVisit) sessionStorage.setItem(HUB_SEEN_KEY, "1");
 
-  const grid = ui.el("div", { class: "hub-grid" },
-    hubCard({
+  const header = ui.el("div", { class: "hub-header" },
+    ui.el("h1", { class: "display display--lg", text: "Juegos" }),
+    poolCount > 0
+      ? ui.el("p", { class: "hub-header__sub" },
+          ui.el("a", { href: "#/library", text: `${poolCount} ${songWord(poolCount)} en «Lo que sé»` }),
+        )
+      : null,
+  );
+
+  const posters = ui.el("div", { class: `hub-posters${firstVisit ? " hub-posters--intro" : ""}` },
+    gamePoster({
       href: "#/juegos/ronda",
-      feature: true,
+      game: "ronda",
+      paper: "pink",
       title: "Ronda completa",
-      num: "00",
-      desc: "Una canción al azar y todos los desafíos: portada, instante, año y letra.",
-      cta: "Jugar",
-      visual: roundVisual(),
+      desc: "Una canción al azar y todos sus desafíos: el tema, el disco y la letra.",
     }),
-  );
-
-  const practiceGrid = ui.el("div", { class: "hub-grid" },
-    hubCard({
+    gamePoster({
       href: "#/juegos/clip",
+      game: "clip",
+      paper: "yellow",
       title: "La primera décima",
-      num: "01",
       desc: "Reconoce la canción por un instante de sonido. Cada +0,1 s te acerca a la respuesta.",
-      cta: "Jugar",
-      visual: barsVisual(),
     }),
-    hubCard({
+    gamePoster({
       href: "#/juegos/album",
+      game: "album",
+      paper: "orange",
       title: "Portada borrosa",
-      num: "02",
       desc: "Identifica el álbum detrás del desenfoque y descubre su lista de temas.",
-      cta: "Jugar",
-      visual: ui.el("div", { class: "hub-blur-tile", "aria-hidden": "true" }),
     }),
-    hubCard({
+    gamePoster({
       href: "#/juegos/año",
+      game: "year",
+      paper: "cyan",
       title: "¿De qué año?",
-      num: "03",
       desc: "Adivina el año de lanzamiento con pistas de más nuevo o más viejo.",
-      cta: "Jugar",
-      visual: ui.el("span", { class: "hub-year", "aria-hidden": "true", text: "'19" }),
     }),
   );
 
-  view.append(
-    volumeRow,
-    ui.el("div", { class: "section" }, grid),
-    ui.el("p", { class: "hub-section-label", text: "Práctica suelta" }),
-    ui.el("div", { class: "section" }, practiceGrid),
-  );
+  view.append(header);
+  if (poolCount === 0) view.append(emptyLibraryPanel());
+  view.append(posters);
 }
 
-function hubCard({ href, feature = false, title, num, desc, cta, visual }) {
+/**
+ * One poster in the hub wall: the whole poster is the link. `record` stays
+ * an empty, styled slot — task T3 fills it with a best-record line.
+ */
+function gamePoster({ href, game, paper, title, desc }) {
   return ui.el("a", {
-    class: `hub-card${feature ? " hub-card--feature" : " hub-card--stack"}`,
+    class: `paper hub-poster hub-poster--${game}`,
     href,
+    "data-paper": paper,
   },
-    ui.el("div", { class: "stack" },
-      ui.el("div", { class: "hub-card__title" },
-        ui.el("span", { class: "hub-card__num", text: num }),
-        ui.el("span", { text: title }),
-      ),
-      ui.el("p", { class: "hub-card__desc", text: desc }),
-    ),
-    visual,
-    ui.el("span", { class: "btn btn--primary btn--sm", text: cta }),
+    ui.el("span", { class: "poster-title hub-poster__title", text: title }),
+    ui.el("p", { class: "hub-poster__desc", text: desc }),
+    ui.el("span", { class: "hub-poster__record" }),
   );
 }
 
-function barsVisual() {
-  const bars = ui.el("div", { class: "hub-visual", "aria-hidden": "true" });
-  for (let i = 0; i < 6; i++) bars.append(ui.el("span", { class: "hub-visual__bar" }));
-  return bars;
-}
-
-function roundVisual() {
-  const wrap = ui.el("div", { class: "hub-round", "aria-hidden": "true" });
-  wrap.append(ui.el("span", { class: "hub-round__dot" }));
-  wrap.append(ui.el("span", { class: "hub-round__dot" }));
-  wrap.append(ui.el("span", { class: "hub-round__dot" }));
-  wrap.append(ui.el("span", { class: "hub-round__dot" }));
-  return wrap;
+function emptyLibraryPanel() {
+  return ui.el("div", { class: "hub-empty" },
+    ui.el("p", { text: "Todavía no hay canciones en «Lo que sé»." }),
+    ui.el("a", { class: "btn btn--primary", href: "#/library", text: "Ir a la biblioteca" }),
+  );
 }
 
 // --- library view ------------------------------------------------------------------------
