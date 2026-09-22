@@ -77,9 +77,14 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   wrong guesses leave no persistent state (160 ms flash only); album game cover
   is 866 px wide on desktop and pushes inputs below the fold; mobile nav wraps
   to two lines.
-- [ ] T2 Visual foundation: tokens, self-hosted fonts, chrome (nav, banners,
+- [x] T2 Visual foundation: tokens, self-hosted fonts, chrome (nav, banners,
   toasts, buttons, inputs), login and hub as the poster wall.
   Route: delegated. Check: screenshots desktop/mobile, `npm test`.
+  Evidence: `npm test` 7/7 green (writer + parent spot check); 28/28 shots in
+  `/tmp/guessi-shots/t2/`, no console errors; nav one line at 360 px, 64 px
+  tall; no horizontal overflow except `library` at 390 px (pre-existing in the
+  baseline, T9). Parent fix: display headings got `word-spacing: .1em`
+  ("La canción" read as one word).
 - [ ] T3 Game kit: shared clip player (segmented bar, play/stop, skip,
   volume), `scores.js` (streaks/records, unit-tested), reveal poster,
   feedback motion helpers. Route: delegated. Check: unit tests + screenshots.
@@ -112,9 +117,9 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 - TDD: off. Source: `openspec/config.yaml` (`strict_tdd: false`) and Engram
   #1456. Runner: `npm test` (plain-node harnesses). New pure logic still gets
   a `tests/*.test.mjs` harness, following repo convention.
-- RDD: on (default, `gentle-ai review mode status`). Per work-unit commit:
-  `gentle-ai review assess --base-ref <last reviewed boundary> --committed-only`.
-  First boundary: `28eca69`.
+- RDD: was on by default; the user turned it off globally on 2026-09-23
+  (`review mode status`: off, decided by global). No reviews from T2 on;
+  `review assess` only picks verification depth for delegated work.
 - Delivery: `exception-ok`. Source: Engram #1453 (user: "sin límite" for this
   project) and repo policy (direct to `main`, no PRs). Forecast ~3,000-4,000
   authored changed lines. Push/merge remain the user's decision.
@@ -124,7 +129,9 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 | Task | Commit | Assessed tier / review outcome | Notes |
 |---|---|---|---|
 | T1 | `a203a19` | medium, `slice_budget_reached` (932 lines); user granted; reliability lens approved, acknowledged (lineage `review-0cb83b7632bdd94a`) | 6 advisory findings (R3-001..006) fixed in the follow-up tooling commit |
+| T1 fix | `6a478f3` | medium, under budget (45 lines) | review findings on the tooling |
+| T2 | `571044c` | medium; RDD then off (`rdd_disabled`), no review | writer self-verification + parent screenshots |
 
 ## Next step
 
-T2 (delegated writer). Last reviewed boundary: `a203a19`.
+T3 game kit (delegated writer), then T4 with the same writer.
