@@ -476,7 +476,7 @@
         var url = typeof input === "string" ? input : (input && input.url) || String(input);
         var u = null;
         try { u = new URL(url, location.href); } catch (e) { u = null; }
-        var method = (init && init.method) || "GET";
+        var method = ((init && init.method) || (input && typeof input === "object" && input.method) || "GET").toUpperCase();
 
         if (u && u.origin === "https://api.spotify.com") return handleSpotifyApi(u, method, init);
         if (u && u.origin === "https://lrclib.net") return handleLrclib(u);

@@ -65,10 +65,18 @@ Karla for text, both self-hosted.
 
 Route legend: inline = parent edits directly; delegated = one bounded writer.
 
-- [ ] T1 Screenshot harness: `harness-app.html` boots the real app with
+- [x] T1 Screenshot harness: `harness-app.html` boots the real app with
   stubbed Spotify; `tools/shot.mjs` captures every route (desktop + mobile).
   Route: delegated (writer trigger: new tooling across 2 files + prep reading
   of 6 modules). Check: baseline PNGs render real screens; `npm test` green.
+  Evidence: 28 baseline PNGs in `/tmp/guessi-shots/baseline/` reviewed by the
+  parent; `npm test` 7/7 suites green (parent spot check). Run with
+  `NODE_PATH=/tmp/pw/node_modules node tools/shot.mjs --label <name> [--only <route>]`.
+  Baseline findings: hub has no empty-library state; audio games read
+  `isPremium()` synchronously at mount (Free accounts see the audio UI first);
+  wrong guesses leave no persistent state (160 ms flash only); album game cover
+  is 866 px wide on desktop and pushes inputs below the fold; mobile nav wraps
+  to two lines.
 - [ ] T2 Visual foundation: tokens, self-hosted fonts, chrome (nav, banners,
   toasts, buttons, inputs), login and hub as the poster wall.
   Route: delegated. Check: screenshots desktop/mobile, `npm test`.
@@ -115,7 +123,8 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 
 | Task | Commit | Assessed tier / review outcome | Notes |
 |---|---|---|---|
+| T1 | `a203a19` | medium, `slice_budget_reached` (932 lines); user granted; reliability lens approved, acknowledged (lineage `review-0cb83b7632bdd94a`) | 6 advisory findings (R3-001..006) fixed in the follow-up tooling commit |
 
 ## Next step
 
-T1 in progress (delegated).
+T2 (delegated writer). Last reviewed boundary: `a203a19`.

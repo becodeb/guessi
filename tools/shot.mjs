@@ -74,7 +74,7 @@ function startServer(root) {
       }
       if (urlPath === "/") urlPath = "/index.html";
       const filePath = path.normalize(path.join(root, urlPath));
-      if (!filePath.startsWith(root)) {
+      if (filePath !== root && !filePath.startsWith(root + path.sep)) {
         res.writeHead(403);
         res.end();
         return;
@@ -172,6 +172,14 @@ function buildUrl(port, target) {
 
 async function captureOne(browser, port, target, viewport, outDir, consoleLog) {
   const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+  try {
+    return await captureInContext(context, target, viewport, outDir, consoleLog, port);
+  } finally {
+    await context.close();
+  }
+}
+
+async function captureInContext(context, target, viewport, outDir, consoleLog, port) {
   const page = await context.newPage();
   const pageLabel = `${target.name}--${viewport.name}`;
 
@@ -189,6 +197,7 @@ async function captureOne(browser, port, target, viewport, outDir, consoleLog) {
     await page.waitForSelector(target.wait, { timeout: 8000 });
   } catch {
     consoleLog.push({ page: pageLabel, kind: "harness-warn", text: `wait selector "${target.wait}" never appeared — screenshot will still be taken` });
+    process.exitCode = 1;
   }
 
   // Real readiness for cover art: picsum.photos takes ~0.5-1s per image
@@ -233,8 +242,6 @@ async function captureOne(browser, port, target, viewport, outDir, consoleLog) {
 
   const outPath = path.join(outDir, `${pageLabel}.png`);
   await page.screenshot({ path: outPath, fullPage: true });
-
-  await context.close();
   return outPath;
 }
 
@@ -263,11 +270,17 @@ async function main() {
   const port = server.address().port;
   console.log(`Static server on http://127.0.0.1:${port} (root: ${REPO_ROOT})`);
 
-  const browser = await chromium.launch({
-    executablePath: "/usr/bin/chromium",
-    args: ["--no-sandbox", "--disable-gpu"],
-    headless: true,
-  });
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
+      args: ["--no-sandbox", "--disable-gpu"],
+      headless: true,
+    });
+  } catch (err) {
+    server.close();
+    throw err;
+  }
 
   const consoleLog = [];
   const saved = [];
@@ -281,6 +294,7 @@ async function main() {
           console.log(`saved: ${outPath}`);
         } catch (err) {
           console.error(`FAILED ${target.name}--${viewport.name}: ${err && err.stack}`);
+          process.exitCode = 1;
         }
       }
     }
