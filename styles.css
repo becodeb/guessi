@@ -953,6 +953,7 @@ button {
 }
 
 .hub-poster {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -986,13 +987,24 @@ button {
   }
 }
 
+/* Container-query sizing: each title fills its own poster's width (not the
+   viewport's), tuned per poster for its own text length so it reads as a
+   real gig-poster headline. Stacked lines are welcome. */
 .hub-poster__title {
-  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-size: clamp(1.6rem, 11cqi, 3.2rem);
 }
 
-/* Ronda reads as the biggest poster — largest type, not a bigger card. */
+.hub-poster--album .hub-poster__title {
+  font-size: clamp(1.7rem, 12cqi, 3.6rem);
+}
+
+/* Ronda and Año land in the wide grid column — biggest type on the wall. */
 .hub-poster--ronda .hub-poster__title {
-  font-size: var(--text-poster);
+  font-size: clamp(1.9rem, 13cqi, 4.6rem);
+}
+
+.hub-poster--year .hub-poster__title {
+  font-size: clamp(2rem, 15cqi, 4.6rem);
 }
 
 .hub-poster__desc {
@@ -2416,6 +2428,25 @@ button {
   .hub-posters--intro .hub-poster {
     animation: none;
   }
+
+  /* Game kit (task T3): the clip fill still jumps to its end position (state
+     still updates), the reveal poster lands at rest, and score/feedback
+     motion happens instantly instead of animating. */
+  .clip-player__fill,
+  .clip-player__unlocked {
+    transition: none;
+  }
+
+  .reveal-poster {
+    animation: none;
+  }
+
+  .shake-anim,
+  .pop-anim,
+  .tick-anim,
+  .score-hud__counter--celebrate {
+    animation: none;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -3331,5 +3362,288 @@ button {
   padding: var(--gap-lg);
   gap: var(--gap);
   align-items: flex-start;
+}
+
+/* --------------------------------------------------------------------------
+   Clip player (game kit, task T3): a linear pill meter up to the longest
+   step (3,2s), one big Play/Stop, a start-offset skip and a compact volume.
+   src/clip-player.js owns the markup; games only mount it and call its API.
+   -------------------------------------------------------------------------- */
+
+.clip-player {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.clip-player__meter {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.clip-player__track {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+/* The unlocked region (0 → current step) tints ahead of what is playing. */
+.clip-player__unlocked {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  width: 0%;
+  background: color-mix(in srgb, var(--game) 35%, transparent);
+  transition: width var(--dur-state) var(--ease-out);
+}
+
+/* Honest progress: pre-sized to the unlocked width, then scaleX(0 → 1) over
+   exactly the clip duration while playing — transform only, no layout cost. */
+.clip-player__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  width: 0%;
+  background: var(--game);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.clip-player__ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.clip-player__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--chalk) 20%, transparent);
+}
+
+.clip-player__tick--unlocked {
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+}
+
+.clip-player__length {
+  flex: none;
+  min-width: 4.5ch;
+  text-align: right;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.clip-player__hint,
+.clip-player__gate {
+  margin: 0;
+}
+
+.clip-player__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* One big circular Play/Stop — the kit's one unmissable control. */
+.clip-player__play {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--game);
+  color: var(--ink);
+  transition: transform var(--dur-press) var(--ease-out), background var(--dur-state) var(--ease-out),
+    opacity var(--dur-state) var(--ease-out);
+}
+
+.clip-player__play .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.clip-player__play:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--game) 85%, white);
+}
+
+.clip-player__play:active:not(:disabled) {
+  transform: scale(.96);
+}
+
+.clip-player__play:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.clip-player__secondary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.clip-player__offset {
+  white-space: nowrap;
+}
+
+/* volumeControl() builds `.volume`; this modifier only shrinks it to fit a
+   secondary control row instead of the round's full-width one. */
+.volume.volume--compact {
+  gap: 6px;
+}
+
+.volume.volume--compact input[type="range"] {
+  width: 84px;
+}
+
+/* 390px: Play + any game-supplied actions keep one line; skip/volume wrap
+   onto their own row instead of forcing horizontal scroll. */
+@media (max-width: 420px) {
+  .clip-player__secondary {
+    width: 100%;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Score HUD (game kit, task T3): streak / points / record, big condensed
+   numbers with small Karla labels. ui.scoreHud() builds and updates it.
+   -------------------------------------------------------------------------- */
+
+.score-hud {
+  display: flex;
+  gap: var(--gap-xl);
+}
+
+.score-hud__counter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.score-hud__value {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.score-hud__label {
+  font-family: var(--font-text);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+
+/* A fresh record earns the record counter a paper sticker for one beat. */
+.score-hud__counter--celebrate {
+  animation: pop var(--dur-reveal) var(--ease-pop);
+}
+
+.score-hud__counter--celebrate .score-hud__value {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-paper);
+  background: var(--game);
+  color: var(--ink);
+  transform: rotate(-2deg);
+}
+
+/* --------------------------------------------------------------------------
+   Reveal poster (game kit, task T3): the answer announcement on a .paper —
+   ui.revealPoster() sizes the title in JS (container width varies by call
+   site), so only the layout and the fixed-size parts live here.
+   -------------------------------------------------------------------------- */
+
+.reveal-poster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap-lg);
+  animation: paste-in var(--dur-reveal) var(--ease-paste) both;
+}
+
+.reveal-poster__cover {
+  align-self: center;
+  width: 104px;
+  height: 104px;
+  flex: none;
+  object-fit: cover;
+  border-radius: var(--radius-cover);
+  box-shadow: var(--shadow-paper);
+  transform: rotate(-3deg);
+}
+
+.reveal-poster__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* No overflow-wrap: break-word here on purpose — it would let the browser
+   solve overflow by splitting a word mid-character before ui.js's shrink
+   loop ever measures scrollWidth, defeating the "shrink" it is meant to do. */
+.reveal-poster__title {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.reveal-poster__line {
+  font-family: var(--font-text);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.reveal-poster__stamp {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper-white);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.9rem;
+  transform: rotate(8deg);
+}
+
+/* Cover beside the title once there is room; stacked above it on a phone. */
+@media (min-width: 480px) {
+  .reveal-poster {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .reveal-poster__cover {
+    align-self: flex-start;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Feedback motion (game kit, task T3): shake/pop/tick keyframes already
+   exist above (T2) — these classes are what ui.js toggles to play them.
+   -------------------------------------------------------------------------- */
+
+.shake-anim {
+  animation: shake var(--dur-reveal) var(--ease-out);
+}
+
+.pop-anim {
+  animation: pop var(--dur-state) var(--ease-pop);
+}
+
+.tick-anim {
+  animation: tick var(--dur-state) var(--ease-out);
 }
 

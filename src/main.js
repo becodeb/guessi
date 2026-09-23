@@ -7,6 +7,7 @@ import * as api from "./spotify-api.js";
 import * as player from "./player.js";
 import * as library from "./library.js";
 import * as ui from "./ui.js";
+import * as scores from "./scores.js";
 import * as match from "./match.js";
 import { parseSpotifyRef, looksLikeSpotifyLink } from "./spotify-link.js";
 import * as clipGame from "./games/clip-game.js";
@@ -437,10 +438,13 @@ function renderHub(view) {
   view.append(posters);
 }
 
-/**
- * One poster in the hub wall: the whole poster is the link. `record` stays
- * an empty, styled slot — task T3 fills it with a best-record line.
- */
+/** "Récord: racha de N", or "" when the game has no streak recorded yet. */
+function recordText(gameId) {
+  const { bestStreak } = scores.getRecord(gameId);
+  return bestStreak > 0 ? `Récord: racha de ${bestStreak}` : "";
+}
+
+/** One poster in the hub wall: the whole poster is the link. */
 function gamePoster({ href, game, paper, title, desc }) {
   return ui.el("a", {
     class: `paper hub-poster hub-poster--${game}`,
@@ -449,7 +453,7 @@ function gamePoster({ href, game, paper, title, desc }) {
   },
     ui.el("span", { class: "poster-title hub-poster__title", text: title }),
     ui.el("p", { class: "hub-poster__desc", text: desc }),
-    ui.el("span", { class: "hub-poster__record" }),
+    ui.el("span", { class: "hub-poster__record", text: recordText(game) }),
   );
 }
 

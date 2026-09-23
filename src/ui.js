@@ -199,3 +199,123 @@ export function volumeControl(ctx) {
 
   return el("div", { class: "volume" }, icon("volume"), input, readout);
 }
+
+// --- feedback motion (game kit, task T3) -------------------------------------
+
+function prefersReducedMotion() {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Replays a one-shot CSS animation on `el` by toggling `className`, reduced-motion safe. */
+function playOnce(el, className) {
+  if (!el || prefersReducedMotion()) return;
+  el.classList.remove(className);
+  void el.offsetWidth;
+  el.classList.add(className);
+  el.addEventListener("animationend", () => el.classList.remove(className), { once: true });
+}
+
+/** Wrong-answer feedback: briefly shakes `el`, a no-op under reduced motion. */
+export function shake(el) {
+  playOnce(el, "shake-anim");
+}
+
+/** Positive feedback: briefly pops `el`, a no-op under reduced motion. */
+export function pop(el) {
+  playOnce(el, "pop-anim");
+}
+
+/** Animates the integer text of `el` toward `value` over ~400ms; instant under reduced motion. */
+export function countTo(el, value) {
+  if (!el) return;
+  const from = Number.parseInt(el.textContent, 10) || 0;
+  const to = Math.round(value);
+  if (prefersReducedMotion() || from === to) {
+    el.textContent = String(to);
+    return;
+  }
+  const start = performance.now();
+  const duration = 400;
+  const frame = (now) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - (1 - t) ** 3;
+    el.textContent = String(Math.round(from + (to - from) * eased));
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+/**
+ * Three-counter score HUD (streak, points, best). `update()` re-renders
+ * changed counters with a tick and stickers the best counter on a new record.
+ * @param {{labels?: {streak?: string, points?: string, best?: string}}} [opts]
+ * @returns {{el: HTMLElement, update: (s: {streak?: number, points?: number, best?: number}) => void}}
+ */
+export function scoreHud({ labels = {} } = {}) {
+  const text = { streak: "Racha", points: "Puntos", best: "Récord", ...labels };
+  const counter = (mod, label) => {
+    const value = el("span", { class: "score-hud__value display--num", text: "0" });
+    const box = el("div", { class: `score-hud__counter${mod ? ` score-hud__counter--${mod}` : ""}` },
+      value,
+      el("span", { class: "score-hud__label", text: label }),
+    );
+    return { box, value };
+  };
+  const streak = counter("", text.streak);
+  const points = counter("", text.points);
+  const best = counter("best", text.best);
+  const root = el("div", { class: "score-hud" }, streak.box, points.box, best.box);
+
+  let last = { streak: 0, points: 0, best: 0 };
+  function update({ streak: s = 0, points: p = 0, best: b = 0 } = {}) {
+    if (s !== last.streak) { countTo(streak.value, s); playOnce(streak.value, "tick-anim"); }
+    if (p !== last.points) { countTo(points.value, p); playOnce(points.value, "tick-anim"); }
+    if (b !== last.best) { countTo(best.value, b); playOnce(best.value, "tick-anim"); }
+    if (b > last.best && b > 0) playOnce(best.box, "score-hud__counter--celebrate");
+    last = { streak: s, points: p, best: b };
+  }
+
+  return { el: root, update };
+}
+
+/**
+ * Answer-reveal poster: song/album title, artist/album lines, an optional
+ * stapled cover, and an optional corner stamp. `paper` picks the paper color.
+ * @param {{paper?: "pink"|"yellow"|"orange"|"cyan"|"white", title: string,
+ *          lines?: string[], coverUrl?: string, stamp?: string}} opts
+ * @returns {HTMLElement}
+ */
+export function revealPoster({ paper = "white", title = "", lines = [], coverUrl, stamp } = {}) {
+  const titleEl = el("span", { class: "poster-title reveal-poster__title", text: title });
+  const cover = coverUrl
+    ? el("img", {
+        class: "reveal-poster__cover",
+        src: coverUrl,
+        alt: title ? `Portada de ${title}` : "",
+        loading: "lazy",
+      })
+    : null;
+  if (cover) cover.addEventListener("error", () => cover.remove(), { once: true });
+
+  const body = el("div", { class: "reveal-poster__body" },
+    titleEl,
+    ...lines.filter(Boolean).map((line) => el("p", { class: "reveal-poster__line", text: line })),
+  );
+  const stampEl = stamp ? el("span", { class: "reveal-poster__stamp", text: stamp }) : null;
+
+  const root = el("div", { class: "paper reveal-poster", "data-paper": paper }, cover, body, stampEl);
+
+  requestAnimationFrame(() => requestAnimationFrame(() => shrinkPosterTitle(titleEl)));
+  return root;
+}
+
+/** Steps `el`'s font-size down from 72px until its content fits 3 lines and no word overflows, floor 40px. */
+function shrinkPosterTitle(el) {
+  const min = 40;
+  let size = 72;
+  el.style.fontSize = `${size}px`;
+  while (size > min && (el.scrollHeight > size * 0.9 * 3 + 4 || el.scrollWidth > el.clientWidth + 1)) {
+    size -= 4;
+    el.style.fontSize = `${size}px`;
+  }
+}
