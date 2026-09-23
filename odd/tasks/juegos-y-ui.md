@@ -85,14 +85,27 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   tall; no horizontal overflow except `library` at 390 px (pre-existing in the
   baseline, T9). Parent fix: display headings got `word-spacing: .1em`
   ("La canción" read as one word).
-- [ ] T3 Game kit: shared clip player (segmented bar, play/stop, skip,
+- [x] T3 Game kit: shared clip player (segmented bar, play/stop, skip,
   volume), `scores.js` (streaks/records, unit-tested), reveal poster,
   feedback motion helpers. Route: delegated. Check: unit tests + screenshots.
-- [ ] T4 "La primera décima" as a six-step loop with suggestions from
+  Evidence: `npm test` 8/8 green (27 new assertions in `tests/scores.test.mjs`,
+  parent re-run); writer mounted the kit in a throwaway Playwright page
+  (idle, connecting, non-Premium, playing, 390 px) and fixed two bugs found
+  in the captures; hub shots in `/tmp/guessi-shots/t3/` reviewed by parent.
+- [x] T4 "La primera décima" as a six-step loop with suggestions from
   "Lo que sé", points, streak and reveal. Route: delegated.
   Check: harness interaction shots, `npm test`.
-- [ ] CHECKPOINT: send screenshots + local server to the user for real UX
-  feedback before rolling the direction out further.
+  Evidence: `npm test` 9/9 green (22 new assertions in
+  `tests/clip-guess.test.mjs`); shots `clip`, `clip-mid`, `clip-win`,
+  `clip-nonpremium` desktop + mobile in `/tmp/guessi-shots/t4c/`, reviewed by
+  the parent after one polish round (full-width field, quiet attempt rows,
+  unclipped stamp, eager reveal cover, one flat non-Premium gate, layout
+  rhythm). Demo mode for testers: `harness-app.html?demo=1` captions the song
+  a clip would play.
+- [ ] CHECKPOINT (in progress): demo on the LAN at
+  `http://192.168.1.37:8093/harness-app.html?demo=1#/juegos` (snapshot of
+  `322fb6a` in `/tmp/guessi-preview`), real app for the SSH tunnel on
+  `127.0.0.1:8092`. Waiting for the user's feedback.
 - [ ] T5 "Portada borrosa": steps, points, streak, reveal.
 - [ ] T6 "¿De qué año?": one-shot year pick with closeness points, run of 10,
   results poster.
@@ -131,7 +144,11 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 | T1 | `a203a19` | medium, `slice_budget_reached` (932 lines); user granted; reliability lens approved, acknowledged (lineage `review-0cb83b7632bdd94a`) | 6 advisory findings (R3-001..006) fixed in the follow-up tooling commit |
 | T1 fix | `6a478f3` | medium, under budget (45 lines) | review findings on the tooling |
 | T2 | `571044c` | medium; RDD then off (`rdd_disabled`), no review | writer self-verification + parent screenshots |
+| T3 | `9e4edd3` | RDD off | kit has its first consumer in T4 |
+| T4 | `a2732c5` | RDD off | Heardle loop + polish round |
+| demo | `322fb6a` | RDD off | harness captions for testers |
 
 ## Next step
 
-T3 game kit (delegated writer), then T4 with the same writer.
+Wait for the user's checkpoint feedback; then T5 (Portada borrosa) with the
+same loop pattern, adjusting the direction to what the user reports.
