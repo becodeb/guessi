@@ -106,6 +106,11 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   `http://192.168.1.37:8093/harness-app.html?demo=1#/juegos` (snapshot of
   `322fb6a` in `/tmp/guessi-preview`), real app for the SSH tunnel on
   `127.0.0.1:8092`. Waiting for the user's feedback.
+  2026-09-23: the user asked to push so it deploys. `main` fast-forwarded to
+  `4a969dc` and pushed; Coolify served it at https://guessi.becode.com.ar/
+  after ~105 s (verified: new `index.html` preloads the Archivo font,
+  `font/woff2` served, production login renders with no console errors).
+  The user now tests on production with real sound.
 - [ ] T5 "Portada borrosa": steps, points, streak, reveal.
 - [ ] T6 "¿De qué año?": one-shot year pick with closeness points, run of 10,
   results poster.
