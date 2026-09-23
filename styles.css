@@ -377,6 +377,7 @@ button {
   color: var(--chalk);
   font-size: 0.95rem;
   font-weight: 600;
+  text-decoration: none;
   transition: background var(--dur-state) var(--ease-out), transform var(--dur-press) var(--ease-out),
     opacity var(--dur-state) var(--ease-out), border-color var(--dur-state) var(--ease-out);
   white-space: nowrap;
@@ -3398,7 +3399,7 @@ button {
   inset: 0 auto 0 0;
   height: 100%;
   width: 0%;
-  background: color-mix(in srgb, var(--game) 35%, transparent);
+  background: color-mix(in srgb, var(--game) 55%, var(--field));
   transition: width var(--dur-state) var(--ease-out);
 }
 
@@ -3563,6 +3564,7 @@ button {
    -------------------------------------------------------------------------- */
 
 .reveal-poster {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--gap);
@@ -3602,19 +3604,28 @@ button {
   color: var(--ink);
 }
 
+/* Sized to its own content (never a fixed circle, so "¡Récord!" never clips)
+   and pinned to overlap the poster's top-right corner, like a real sticker. */
 .reveal-poster__stamp {
-  align-self: flex-end;
+  position: absolute;
+  top: -14px;
+  right: -10px;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--paper-white);
   font-family: var(--font-display);
+  font-stretch: 62.5%;
   font-weight: 800;
-  font-size: 0.9rem;
+  font-size: 1.05rem;
+  white-space: nowrap;
+  box-shadow: var(--shadow-paper);
   transform: rotate(8deg);
 }
 
@@ -3645,5 +3656,215 @@ button {
 
 .tick-anim {
   animation: tick var(--dur-state) var(--ease-out);
+}
+
+/* --------------------------------------------------------------------------
+   Game screen rhythm: reusable by any game view (title + HUD, then a column
+   of panels with a consistent nav→title→panels→panel cadence). A game view
+   composes `.view.game` > `.game__header` + `.game__panels`.
+   -------------------------------------------------------------------------- */
+
+.game {
+  display: flex;
+  flex-direction: column;
+  padding-top: 24px;
+}
+
+.game__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-lg);
+  flex-wrap: wrap;
+}
+
+.game__panels {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.game__gate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap);
+}
+
+.game__gate .icon {
+  color: var(--game, var(--chalk));
+}
+
+@media (max-width: 480px) {
+  .game__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   "La primera décima": combobox, attempts list, result.
+   -------------------------------------------------------------------------- */
+
+.clip-quiz__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.clip-quiz__guess {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.clip-quiz__hint {
+  margin: -4px 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   Combobox (WAI-ARIA "editable combobox with list autocomplete")
+   -------------------------------------------------------------------------- */
+
+.combobox {
+  position: relative;
+}
+
+.combobox__input {
+  display: block;
+  width: 100%;
+}
+
+.combobox__listbox {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 14px 28px -12px rgb(0 0 0 / .6);
+}
+
+.combobox__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--radius-input);
+  cursor: pointer;
+}
+
+.combobox__option:hover,
+.combobox__option--active {
+  background: var(--surface-2);
+}
+
+.combobox__option-title {
+  font-weight: 600;
+}
+
+.combobox__option-artists {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+/* --------------------------------------------------------------------------
+   Attempts list: six compact rows, one per clip step.
+   -------------------------------------------------------------------------- */
+
+.clip-quiz__attempts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clip-quiz__attempt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-input);
+  border: 1px solid transparent;
+}
+
+/* Quiet placeholder, not a fillable field: dashed, no background. */
+.clip-quiz__attempt--future {
+  border: 1px dashed var(--line);
+}
+
+/* Waiting for this step's guess: outlined only, no fill. */
+.clip-quiz__attempt--current {
+  border: 1px solid var(--game, var(--chalk));
+}
+
+.clip-quiz__attempt--wrong {
+  color: var(--text-dim);
+}
+
+.clip-quiz__attempt--wrong .icon {
+  flex: none;
+  color: var(--bad);
+}
+
+.clip-quiz__attempt-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.clip-quiz__attempt--wrong .clip-quiz__attempt-title,
+.clip-quiz__attempt--wrong .clip-quiz__attempt-artists {
+  text-decoration: line-through;
+  text-decoration-color: var(--bad);
+}
+
+.clip-quiz__attempt-title {
+  font-weight: 600;
+}
+
+.clip-quiz__attempt-artists {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+.clip-quiz__attempt--skipped {
+  color: var(--text-dim);
+}
+
+.clip-quiz__attempt--correct .icon {
+  flex: none;
+  color: var(--ok);
+}
+
+.clip-quiz__attempt--correct .clip-quiz__attempt-title {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Result: reveal poster + actions
+   -------------------------------------------------------------------------- */
+
+.clip-quiz__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  align-items: flex-start;
+}
+
+.clip-quiz__lost-note {
+  color: var(--text-dim);
+  font-weight: 600;
 }
 

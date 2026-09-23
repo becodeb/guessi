@@ -136,15 +136,19 @@ export function emptyGuide({ body, actionLabel, onAction }) {
   );
 }
 
-/** Premium gate for audio games (playback spec: premium degradation). */
-export function premiumGate({ onBack }) {
+/**
+ * Premium gate for audio games (playback spec: premium degradation).
+ * @param {{onBack?: () => void, message?: string, link?: {href: string, label: string}}} [opts]
+ */
+export function premiumGate({ onBack, message, link } = {}) {
   return el("div", { class: "premium-gate", role: "note" },
     el("div", { class: "banner banner--premium" },
       icon("warn"),
       el("span", {
-        text: "Necesitas Spotify Premium para los juegos de audio. Tu biblioteca y el juego de portadas siguen disponibles.",
+        text: message ?? "Necesitas Spotify Premium para los juegos de audio. Tu biblioteca y el juego de portadas siguen disponibles.",
       })
     ),
+    link ? el("a", { class: "btn btn--sm", href: link.href, text: link.label }) : null,
     onBack
       ? el("button", { class: "btn", on: { click: onBack }, text: "Volver a Juegos" })
       : null
@@ -292,7 +296,6 @@ export function revealPoster({ paper = "white", title = "", lines = [], coverUrl
         class: "reveal-poster__cover",
         src: coverUrl,
         alt: title ? `Portada de ${title}` : "",
-        loading: "lazy",
       })
     : null;
   if (cover) cover.addEventListener("error", () => cover.remove(), { once: true });

@@ -119,6 +119,19 @@ function wrongGuess(selector, text) {
   };
 }
 
+// clip-game.js's combobox: type a query, wait for the listbox, click one of
+// the resulting suggestions. Paired with target.stubRandom so the drawn
+// answer (and therefore whether the pick is right or wrong) is deterministic.
+function pickSuggestion(query, { index = 0 } = {}) {
+  return async (page) => {
+    const input = page.locator(".combobox__input").first();
+    await input.fill(query);
+    await page.waitForSelector(".combobox__option", { timeout: 3000 });
+    await page.locator(".combobox__option").nth(index).click();
+    await page.waitForTimeout(600);
+  };
+}
+
 const TARGETS = [
   { name: "login", query: { authed: "0" }, hash: hashFor("/login"), wait: ".login__hero" },
 
@@ -133,21 +146,22 @@ const TARGETS = [
   // the hub. round-game.js is the clearest example of it.
   { name: "ronda-empty", query: { empty: "1" }, hash: hashFor("/juegos/ronda"), wait: ".import-guide" },
 
-  // NOTE: clip-game.js's clip card is plain class "card" — ".clip-card" only
-  // exists in round-game.js's shared clip block. ".clip__actions" (the
-  // Reproducir/+0,1s/Siguiente row) is the precise, clip-game-only selector.
-  { name: "clip", query: {}, hash: hashFor("/juegos/clip"), wait: ".clip__actions" },
-  { name: "clip-mid", query: {}, hash: hashFor("/juegos/clip"), wait: ".clip__actions",
-    interaction: wrongGuess(".guess-panel .guess__input", "una respuesta incorrecta") },
-  // NOTE (see report): clip-game.js's render() reads ctx.player.isPremium()
-  // synchronously at mount time, before the fake/real SDK has had a chance to
-  // connect and discover the account is not Premium (that happens async, via
-  // the "account_error" listener). So a fresh direct load of this route with
-  // premium=0 still renders the full audio-game card first; only the top nav
-  // banner ends up reflecting the real account a beat later. That is real
-  // app behavior, not a harness gap — captured as-is on purpose.
-  { name: "clip-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/clip"), wait: ".clip__actions",
-    settleWait: ".banner--premium" },
+  // clip-game.js ("La primera décima"): the combobox input is the precise,
+  // always-present signal that the new guess UI mounted.
+  { name: "clip", query: {}, hash: hashFor("/juegos/clip"), wait: ".combobox__input" },
+  // stubRandom pins the drawn answer to the first pool track ("De Música
+  // Ligera", Soda Stereo — see harness-app.html's ALBUM_SOURCE), so picking
+  // "Bocanada" (a different song entirely) is reliably a wrong guess.
+  { name: "clip-mid", query: {}, hash: hashFor("/juegos/clip"), wait: ".combobox__input",
+    stubRandom: true, interaction: pickSuggestion("bocanada"), settleWait: ".clip-quiz__attempt--wrong" },
+  // Same stub; "musica" resolves to the stubbed answer itself, so the pick
+  // is correct and the round transitions to the reveal poster.
+  { name: "clip-win", query: {}, hash: hashFor("/juegos/clip"), wait: ".combobox__input",
+    stubRandom: true, interaction: pickSuggestion("musica"), settleWait: ".reveal-poster" },
+  // clip-game.js reacts live to onPremiumError (instead of a one-shot
+  // isPremium() read at mount) and swaps the whole panels area to one flat
+  // gate — ".game__gate" is the stable end state, not the combobox.
+  { name: "clip-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/clip"), wait: ".game__gate" },
 
   { name: "album", query: {}, hash: hashFor("/juegos/album"), wait: ".guess-panel" },
   { name: "album-mid", query: {}, hash: hashFor("/juegos/album"), wait: ".guess-panel",
@@ -188,6 +202,12 @@ async function captureInContext(context, target, viewport, outDir, consoleLog, p
   page.on("pageerror", (err) => {
     consoleLog.push({ page: pageLabel, kind: "pageerror", text: String((err && err.stack) || err) });
   });
+
+  // Pins clip-game.js's/library.js's Math.random()-based draws to index 0,
+  // so a target can interact with a known song instead of a random one.
+  if (target.stubRandom) {
+    await page.addInitScript(() => { Math.random = () => 0; });
+  }
 
   const url = buildUrl(port, target);
   await page.goto(url, { waitUntil: "domcontentloaded" });
@@ -232,6 +252,22 @@ async function captureInContext(context, target, viewport, outDir, consoleLog, p
     } catch {
       consoleLog.push({ page: pageLabel, kind: "harness-warn", text: `optional settle selector "${target.settleWait}" never appeared` });
     }
+  }
+
+  // An interaction can reveal new images after the page's own initial
+  // networkidle wait already passed (e.g. clip-game.js's reveal poster cover,
+  // only created once a guess resolves) — wait for the network again, then
+  // for that exact <img> to finish loading, so it never gets captured blank.
+  if (target.interaction) {
+    await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {
+      consoleLog.push({ page: pageLabel, kind: "harness-warn", text: "post-interaction networkidle timed out" });
+    });
+    await page.waitForFunction(() => {
+      const img = document.querySelector(".reveal-poster__cover");
+      return !img || img.complete;
+    }, { timeout: 4000 }).catch(() => {
+      consoleLog.push({ page: pageLabel, kind: "harness-warn", text: "reveal-poster cover never finished loading" });
+    });
   }
 
   const actualWidth = await page.evaluate(() => document.documentElement.clientWidth);

@@ -1,7 +1,6 @@
-// Shared clip player for the game kit (design "Afiche", task T3): a pill
-// progress meter, one Play/Stop button, a start-offset skip and volume, built
-// once so every game replaces its own copy of the clip bar (clip-game.js and
-// year-game.js keep their old bars until T4/T6 swap them in).
+// Shared clip player for the "Afiche" game kit: a pill progress meter, one
+// Play/Stop button, a start-offset skip and volume, and a Premium gate that
+// reacts live to player status instead of trusting a one-shot isPremium().
 
 import * as ui from "./ui.js";
 import { CLIP_STEPS_MS, OFFSET_STEPS_MS, growOffset } from "./clip-steps.js";
@@ -13,10 +12,11 @@ const OFFSET_CEILING_MS = OFFSET_STEPS_MS.reduce((sum, ms) => sum + ms, 0);
  * Build a clip player bound to `ctx.player`. Call `setTrack()` before
  * `play()`, and `destroy()` on unmount or when swapping to a new song.
  * @param {object} ctx  app context ({ player, state, ... })
- * @param {{actions?: Node[]}} [opts]
+ * @param {{actions?: Node[], gate?: HTMLElement}} [opts]  `gate` overrides the
+ *   default premium-gate content (e.g. a game-specific message and link).
  * @returns {{el: HTMLElement, setStep: (i:number)=>void, getStep: ()=>number,
- *   stepsCount: number, play: ()=>void, stop: ()=>void, isPlaying: ()=>boolean,
- *   setTrack: (track:object)=>void, destroy: ()=>void}}
+ *   getOffset: ()=>number, stepsCount: number, play: ()=>void, stop: ()=>void,
+ *   isPlaying: ()=>boolean, setTrack: (track:object)=>void, destroy: ()=>void}}
  */
 export function createClipPlayer(ctx, opts = {}) {
   const st = {
@@ -61,7 +61,7 @@ export function createClipPlayer(ctx, opts = {}) {
   const volumeHost = ui.volumeControl(ctx);
   volumeHost.classList.add("volume--compact");
   const hint = ui.el("p", { class: "clip-player__hint small dim", hidden: true });
-  const gate = ui.premiumGate({});
+  const gate = opts.gate ?? ui.premiumGate({});
   gate.classList.add("clip-player__gate");
   gate.hidden = true;
 
@@ -188,6 +188,7 @@ export function createClipPlayer(ctx, opts = {}) {
     el: root,
     setStep,
     getStep: () => st.stepIndex,
+    getOffset: () => st.fromMs,
     stepsCount: CLIP_STEPS_MS.length,
     play,
     stop,

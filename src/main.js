@@ -187,7 +187,9 @@ function updateBanners() {
     ));
   }
 
-  if (appState.player.status === "premium-denied") {
+  // "clip" shows its own flat Premium gate in place of the whole game, which
+  // already carries this same message — the global banner would only repeat it.
+  if (appState.player.status === "premium-denied" && appState.view !== "clip") {
     banners.push(ui.el("div", { class: "banner banner--premium" },
       ui.icon("warn"),
       ui.el("span", {
@@ -415,7 +417,7 @@ function renderHub(view) {
       game: "clip",
       paper: "yellow",
       title: "La primera décima",
-      desc: "Reconoce la canción por un instante de sonido. Cada +0,1 s te acerca a la respuesta.",
+      desc: "Adivina la canción con una décima de segundo. Cada error te regala un poco más.",
     }),
     gamePoster({
       href: "#/juegos/album",
