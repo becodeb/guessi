@@ -61,6 +61,7 @@
       var params = new URLSearchParams(location.search);
       var PREMIUM = params.get("premium") !== "0"; // default: Premium account
       var EMPTY = params.get("empty") === "1"; // default: seeded library
+      var DEMO = params.get("demo") === "1"; // captions stand in for the missing audio
       // Not one of the two params the task asked for by name, but something has
       // to keep the login screen reachable: main.js redirects #/login → #/juegos
       // the instant auth.isAuthenticated() is true, so reaching /login at all
@@ -326,22 +327,51 @@
         if (!this._paused) this._position = this._currentPosition();
         this._paused = true;
         this._anchor = null;
+        demoCaption(null);
         return Promise.resolve();
       };
       HarnessFakePlayer.prototype.resume = function () {
         this._paused = false;
         this._anchor = Date.now();
+        demoCaption(this._uri);
         return Promise.resolve();
       };
       HarnessFakePlayer.prototype.activateElement = function () { return Promise.resolve(); };
       HarnessFakePlayer.prototype.setVolume = function (v) { this._volume = v; return Promise.resolve(); };
       HarnessFakePlayer.prototype.getVolume = function () { return Promise.resolve(this._volume); };
       // Called from the fetch stub when PUT /me/player/play succeeds — see below.
-      HarnessFakePlayer.prototype.__simulateServerPlay = function (positionMs) {
+      HarnessFakePlayer.prototype.__simulateServerPlay = function (positionMs, uri) {
         this._position = Math.max(0, positionMs || 0);
         this._paused = false;
         this._anchor = Date.now();
+        if (uri) this._uri = uri;
       };
+
+      // Demo mode (?demo=1): with no real audio, a caption shows which song
+      // the clip would be playing, so a tester can play a round end to end.
+      var captionEl = null;
+      var captionTimer = null;
+      function demoCaption(uri) {
+        if (!DEMO) return;
+        clearTimeout(captionTimer);
+        if (!uri) {
+          captionTimer = setTimeout(function () { if (captionEl) captionEl.hidden = true; }, 700);
+          return;
+        }
+        var track = ALL_TRACKS.find(function (t) { return t.uri === uri; });
+        if (!track) return;
+        if (!captionEl) {
+          captionEl = document.createElement("div");
+          captionEl.setAttribute("aria-hidden", "true");
+          captionEl.style.cssText = "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;" +
+            "max-width:calc(100vw - 32px);padding:8px 14px;border-radius:999px;background:#efece5;color:#141312;" +
+            "font:600 14px/1.3 Karla,sans-serif;box-shadow:0 8px 24px -8px rgb(0 0 0 / .6);white-space:nowrap;" +
+            "overflow:hidden;text-overflow:ellipsis;pointer-events:none";
+          document.body.appendChild(captionEl);
+        }
+        captionEl.textContent = "Demo, sonaría: " + track.name + " · " + track.artists.map(function (a) { return a.name; }).join(", ");
+        captionEl.hidden = false;
+      }
 
       window.Spotify = { Player: HarnessFakePlayer };
 
@@ -463,7 +493,7 @@
           }
           try {
             var body = init && init.body ? JSON.parse(init.body) : {};
-            if (window.__harnessPlayerInstance) window.__harnessPlayerInstance.__simulateServerPlay(body.position_ms || 0);
+            if (window.__harnessPlayerInstance) window.__harnessPlayerInstance.__simulateServerPlay(body.position_ms || 0, body.uris && body.uris[0]);
           } catch (e) { /* malformed body: nothing to simulate, still ack the PUT */ }
           return Promise.resolve(new Response(null, { status: 204 }));
         }
