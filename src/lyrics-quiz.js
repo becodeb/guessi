@@ -16,9 +16,10 @@ export const LISTEN_CAP_MS = 12000;
 export const MAX_LISTENS_PER_FRAGMENT = 2;
 export const SONGS_PER_RUN = 5;
 
-const POINTS_PER_WORD = 10;
-const HINT_COST = 4;
-const LISTEN_COST = 6;
+// Exported so the UI can label help costs without duplicating the numbers.
+export const POINTS_PER_WORD = 10;
+export const HINT_COST = 4;
+export const LISTEN_COST = 6;
 const TIME_BONUS_MAX = 20;
 const PERFECT_BONUS = 15;
 

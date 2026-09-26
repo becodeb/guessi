@@ -408,27 +408,53 @@
 
       // Deliberately NOT real song lyrics (would reproduce copyrighted text for
       // no reason) — placeholder verse/chorus shaped text that only needs to
-      // exercise lyrics-engine.js's tokenizer/masking/guessing UI.
+      // exercise lyrics-engine.js's tokenizer/masking/guessing UI, and (task
+      // T3) src/lyrics-quiz.js's fragment/blank picking + lyrics.js's LRC
+      // timestamp parsing. The chorus repeats (stanzas 2 and 4) so the lyrics
+      // game's "prefer a repeated line" weighting has something to prefer,
+      // and every plain-text line gets a matching [mm:ss.xx] tag so
+      // "Escuchar el fragmento" always has synced timing to work with.
       var PLACEHOLDER_LYRICS =
         "Un verso de prueba para el harness\n" +
         "Otra línea que nadie va a cantar\n" +
         "Solo existe para llenar la letra\n" +
         "Y comprobar que el juego puede andar\n" +
         "\n" +
+        "Estribillo inventado para probar\n" +
+        "Palabras huecas que se van a repetir\n" +
+        "El harness no reproduce nada real\n" +
+        "Es solo texto para hacer un test\n" +
+        "\n" +
         "Segunda estrofa de relleno acá\n" +
-        "Palabras huecas nada más que eso\n" +
+        "Con otras líneas que nadie va a leer\n" +
+        "\n" +
+        "Estribillo inventado para probar\n" +
+        "Palabras huecas que se van a repetir\n" +
         "El harness no reproduce nada real\n" +
         "Es solo texto para hacer un test";
 
+      var PLACEHOLDER_SYNCED_LYRICS =
+        "[00:00.00]Un verso de prueba para el harness\n" +
+        "[00:03.00]Otra línea que nadie va a cantar\n" +
+        "[00:06.00]Solo existe para llenar la letra\n" +
+        "[00:09.00]Y comprobar que el juego puede andar\n" +
+        "[00:12.00][00:33.00]Estribillo inventado para probar\n" +
+        "[00:15.00][00:36.00]Palabras huecas que se van a repetir\n" +
+        "[00:18.00][00:39.00]El harness no reproduce nada real\n" +
+        "[00:21.00][00:42.00]Es solo texto para hacer un test\n" +
+        "[00:27.00]Segunda estrofa de relleno acá\n" +
+        "[00:30.00]Con otras líneas que nadie va a leer\n" +
+        "[00:45.00]";
+
       function handleLrclib(u) {
         if (u.pathname === "/api/get") {
-          return json({ plainLyrics: PLACEHOLDER_LYRICS, syncedLyrics: null, instrumental: false });
+          return json({ plainLyrics: PLACEHOLDER_LYRICS, syncedLyrics: PLACEHOLDER_SYNCED_LYRICS, instrumental: false });
         }
         if (u.pathname === "/api/search") {
           return json([{
             trackName: u.searchParams.get("track_name") || "",
             artistName: u.searchParams.get("artist_name") || "",
-            plainLyrics: PLACEHOLDER_LYRICS, instrumental: false, duration: 220,
+            plainLyrics: PLACEHOLDER_LYRICS, syncedLyrics: PLACEHOLDER_SYNCED_LYRICS, instrumental: false, duration: 220,
           }]);
         }
         return json([]);

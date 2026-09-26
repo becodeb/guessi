@@ -132,6 +132,58 @@ function pickSuggestion(query, { index = 0 } = {}) {
   };
 }
 
+// lyrics-game.js ("Completa la letra"): interactions built on the "Pista"
+// button — it always reveals a letter of *some* blank, deterministically,
+// unlike the blank words themselves (chosen by lyrics-quiz.js's rng from
+// harness-app.html's placeholder lyrics), which would be fragile to
+// hand-predict here. stubRandom (Math.random pinned to 0) still makes the
+// whole run deterministic — same song draw order, same fragment, same blanks
+// — every time this script runs.
+function startRandomRun() {
+  return async (page) => {
+    await page.locator(".lyrics-quiz__start button", { hasText: "Al azar" }).click();
+    await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
+  };
+}
+
+function clickPista(times) {
+  return async (page) => {
+    const btn = page.locator(".lyrics-quiz__fragment .lyrics-quiz__help button", { hasText: "Pista" }).first();
+    for (let i = 0; i < times; i++) {
+      if (await btn.isDisabled().catch(() => true)) break;
+      await btn.click().catch(() => {});
+      await page.waitForTimeout(30);
+    }
+  };
+}
+
+// Bounded: no realistic blank runs past a couple hundred hint letters.
+function completeFragmentViaHints() {
+  return async (page) => {
+    const btn = page.locator(".lyrics-quiz__fragment .lyrics-quiz__help button", { hasText: "Pista" }).first();
+    for (let i = 0; i < 200; i++) {
+      if ((await page.locator(".lyrics-quiz__reveal").count()) > 0) break;
+      if (await btn.isDisabled().catch(() => true)) break;
+      await btn.click().catch(() => {});
+      await page.waitForTimeout(20);
+    }
+    await page.waitForSelector(".lyrics-quiz__reveal", { timeout: 4000 });
+  };
+}
+
+function playFullLyricsRun() {
+  return async (page) => {
+    await page.locator(".lyrics-quiz__start button", { hasText: "Al azar" }).click();
+    for (let song = 0; song < 5; song++) {
+      await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
+      await completeFragmentViaHints()(page);
+      await page.locator(".lyrics-quiz__reveal button").first().click();
+      await page.waitForTimeout(150);
+    }
+    await page.waitForSelector(".lyrics-quiz__result", { timeout: 4000 });
+  };
+}
+
 const TARGETS = [
   { name: "login", query: { authed: "0" }, hash: hashFor("/login"), wait: ".login__hero" },
 
@@ -174,6 +226,24 @@ const TARGETS = [
   { name: "ronda", query: {}, hash: hashFor("/juegos/ronda"), wait: ".round__grid" },
   { name: "ronda-mid", query: {}, hash: hashFor("/juegos/ronda"), wait: ".round-sec--song .guess__input",
     interaction: wrongGuess(".round-sec--song .guess__input", "un título incorrecto") },
+
+  // lyrics-game.js ("Completa la letra", task T3).
+  { name: "letra", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start" },
+  { name: "letra-mid", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startRandomRun()(page); await clickPista(3)(page); } },
+  { name: "letra-reveal", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startRandomRun()(page); await completeFragmentViaHints()(page); },
+    settleWait: ".lyrics-quiz__reveal" },
+  { name: "letra-results", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true, interaction: playFullLyricsRun(), settleWait: ".lyrics-quiz__result" },
+  // The game works without Premium; only "Escuchar el fragmento" degrades —
+  // to a disabled note instead of a full-screen gate like clip-game's.
+  { name: "letra-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startRandomRun()(page); },
+    settleWait: ".lyrics-quiz__help-note" },
 ];
 
 // --- capture ---------------------------------------------------------------------

@@ -14,6 +14,7 @@ import * as clipGame from "./games/clip-game.js";
 import * as albumGame from "./games/album-game.js";
 import * as yearGame from "./games/year-game.js";
 import * as roundGame from "./games/round-game.js";
+import * as lyricsGame from "./games/lyrics-game.js";
 
 // --- app state (single source of truth) -------------------------------------
 
@@ -38,12 +39,13 @@ const ROUTES = {
   "/juegos/album": { view: "album", render: renderAlbum, game: albumGame },
   "/juegos/año": { view: "year", render: renderYear, game: yearGame },
   "/juegos/ronda": { view: "ronda", render: renderRonda, game: roundGame },
+  "/juegos/letra": { view: "letra", render: renderLetra, game: lyricsGame },
 };
 
-// The four game views, each themed by styles.css's [data-game] selectors
+// The five game views, each themed by styles.css's [data-game] selectors
 // (Ronda completa = pink, La primera décima = yellow, Portada borrosa =
-// orange, ¿De qué año? = cyan).
-const GAME_VIEWS = new Set(["ronda", "clip", "album", "year"]);
+// orange, ¿De qué año? = cyan, Completa la letra = white).
+const GAME_VIEWS = new Set(["ronda", "clip", "album", "year", "letra"]);
 
 const app = document.getElementById("app");
 let navHost = null;
@@ -129,7 +131,7 @@ function renderNav() {
       authed
         ? ui.el("div", { class: "nav__links" },
             navLink("#/library", "Biblioteca", active === "library"),
-            navLink("#/juegos", "Juegos", active === "hub" || active === "clip" || active === "album" || active === "year" || active === "ronda"),
+            navLink("#/juegos", "Juegos", active === "hub" || active === "clip" || active === "album" || active === "year" || active === "ronda" || active === "letra"),
           )
         : null,
       ui.el("span", { class: "nav__spacer" }),
@@ -432,6 +434,13 @@ function renderHub(view) {
       paper: "cyan",
       title: "¿De qué año?",
       desc: "Adivina el año de lanzamiento con pistas de más nuevo o más viejo.",
+    }),
+    gamePoster({
+      href: "#/juegos/letra",
+      game: "letra",
+      paper: "white",
+      title: "Completa la letra",
+      desc: "Un pedazo de letra con huecos. Llénalos antes de que se acabe el tiempo; si te trabas, escucha el fragmento.",
     }),
   );
 
@@ -1481,6 +1490,15 @@ function renderRonda(view) {
   view.innerHTML = "";
   ensurePlayer();
   roundGame.mount(view, ctx);
+}
+
+function renderLetra(view) {
+  view.innerHTML = "";
+  // Only "Escuchar el fragmento" needs the player; the rest of the game works
+  // without Premium, but priming it early means the help button is ready the
+  // moment the first fragment loads instead of connecting on first click.
+  ensurePlayer();
+  lyricsGame.mount(view, ctx);
 }
 
 boot();

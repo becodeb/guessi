@@ -93,6 +93,11 @@
 [data-game="clip"] { --game: var(--paper-yellow); }
 [data-game="album"] { --game: var(--paper-orange); }
 [data-game="year"] { --game: var(--paper-cyan); }
+/* The four saturated papers above are already spoken for by the other games
+   (comment above still holds: no other saturated color exists) — "Completa
+   la letra" (task T3) reuses the fifth, neutral paper instead of stretching
+   the palette. */
+[data-game="letra"] { --game: var(--paper-white); }
 
 /* --------------------------------------------------------------------------
    Paper: the one reusable "poster" surface. A data-paper value picks the
@@ -940,8 +945,10 @@ button {
 }
 
 /* Asymmetric 12-column wall: Ronda + Décima fill row 1 (7+5), Portada + Año
-   fill row 2 (5+7). DOM order (ronda, clip, album, year) must match, since
-   these spans rely on the grid's normal auto-flow to land each row. */
+   fill row 2 (5+7). DOM order (ronda, clip, album, year, letra) must match,
+   since these spans rely on the grid's normal auto-flow to land each row.
+   Letra (task T3) is the 5th poster: it gets the whole 3rd row to itself
+   instead of forcing a 6th asymmetric pairing onto the existing math. */
 @media (min-width: 1024px) {
   .hub-posters {
     grid-template-columns: repeat(12, 1fr);
@@ -951,6 +958,7 @@ button {
   .hub-poster--clip { grid-column: span 5; }
   .hub-poster--album { grid-column: span 5; }
   .hub-poster--year { grid-column: span 7; }
+  .hub-poster--letra { grid-column: span 12; }
 }
 
 .hub-poster {
@@ -974,6 +982,19 @@ button {
 .hub-poster--clip { --tilt: 2deg; }
 .hub-poster--album { --tilt: -3deg; }
 .hub-poster--year { --tilt: 2deg; }
+.hub-poster--letra { --tilt: -1.5deg; }
+
+/* A full-width poster reads as a banner rather than a torn scrap — its
+   content stays left-aligned instead of stretching the description to an
+   unreadable line length. */
+@media (min-width: 1024px) {
+  .hub-poster--letra {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--gap-xl);
+  }
+}
 
 /* Nothing overflows horizontally on a 360-390px screen. */
 @media (max-width: 639px) {
@@ -984,6 +1005,10 @@ button {
 
   .hub-poster--clip,
   .hub-poster--year {
+    --tilt: 1deg;
+  }
+
+  .hub-poster--letra {
     --tilt: 1deg;
   }
 }
@@ -1033,6 +1058,7 @@ button {
 .hub-posters--intro .hub-poster:nth-child(2) { animation-delay: 70ms; }
 .hub-posters--intro .hub-poster:nth-child(3) { animation-delay: 140ms; }
 .hub-posters--intro .hub-poster:nth-child(4) { animation-delay: 210ms; }
+.hub-posters--intro .hub-poster:nth-child(5) { animation-delay: 280ms; }
 
 /* --------------------------------------------------------------------------
    Clip bar (fills in steps while playing)
@@ -2447,6 +2473,14 @@ button {
   .tick-anim,
   .score-hud__counter--celebrate {
     animation: none;
+  }
+
+  /* Completa la letra (task T3): the bar still jumps to empty when the timer
+     tunes state elsewhere — reduced motion only removes the animated drain,
+     the numeric countdown next to it keeps working exactly the same either
+     way, so nobody loses the actual remaining time. */
+  .lyrics-quiz__timer-fill {
+    transition: none;
   }
 }
 
@@ -3871,3 +3905,172 @@ button {
   font-weight: 600;
 }
 
+
+/* --------------------------------------------------------------------------
+   "Completa la letra" (task T3): start screen, song picker, fragment play,
+   timer, help, and the between-song reveal.
+   -------------------------------------------------------------------------- */
+
+.lyrics-quiz__start,
+.lyrics-quiz__picker,
+.lyrics-quiz__loading,
+.lyrics-quiz__gate,
+.lyrics-quiz__fragment,
+.lyrics-quiz__reveal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.lyrics-quiz__start-copy {
+  max-width: 52ch;
+  color: var(--text-dim);
+}
+
+.lyrics-quiz__gate {
+  align-items: flex-start;
+}
+
+.lyrics-quiz__gate .icon {
+  color: var(--game, var(--chalk));
+}
+
+.lyrics-quiz__song {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.lyrics-quiz__cover {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-cover);
+  object-fit: cover;
+  flex: none;
+}
+
+.lyrics-quiz__song-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lyrics-quiz__song-title {
+  font-weight: 700;
+}
+
+.lyrics-quiz__context {
+  margin: 0;
+  font-style: italic;
+}
+
+.lyrics-quiz__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--gap-lg);
+  background: var(--field);
+  border-radius: var(--radius-card);
+}
+
+.lyrics-quiz__line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  line-height: 1.85;
+  font-family: var(--font-text);
+  font-size: 1.05rem;
+}
+
+.lyrics-quiz__gap {
+  height: 0.7em;
+}
+
+.lyrics-quiz__word {
+  color: var(--text);
+}
+
+.lyrics-quiz__punct {
+  color: var(--text-dim);
+}
+
+/* An unfilled blank: masked letters, pill-shaped, in the game's own color. */
+.lyrics-quiz__blank {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 0 6px;
+  border-radius: var(--radius-input);
+  background: color-mix(in srgb, var(--game, var(--chalk)) 18%, transparent);
+  color: var(--game, var(--chalk));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Filled by the player (typing or a full hint) — reads as solved, like the
+   round game's known-word state. */
+.lyrics-quiz__blank--found {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+
+/* Reveal screen only: a blank the player never found. */
+.lyrics-quiz__word--missed {
+  color: var(--bad);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--bad) 50%, transparent);
+  text-underline-offset: 3px;
+}
+
+.lyrics-quiz__input {
+  width: 100%;
+}
+
+/* Draining timer bar: a plain width transition (clip-player.js's own trick)
+   plus a numeric countdown that keeps working under reduced motion (see the
+   reduced-motion block above). */
+.lyrics-quiz__timer {
+  position: relative;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--field);
+  overflow: hidden;
+}
+
+.lyrics-quiz__timer-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--game, var(--chalk));
+}
+
+.lyrics-quiz__timer--urgent .lyrics-quiz__timer-fill {
+  background: var(--bad);
+}
+
+.lyrics-quiz__timer-countdown {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+}
+
+.lyrics-quiz__help {
+  align-items: center;
+}
+
+.lyrics-quiz__help-note {
+  margin: 0;
+}
+
+.lyrics-quiz__reveal-points {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.lyrics-quiz__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  align-items: flex-start;
+}
