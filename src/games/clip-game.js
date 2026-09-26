@@ -4,7 +4,7 @@
 import * as ui from "../ui.js";
 import * as scores from "../scores.js";
 import { createClipPlayer } from "../clip-player.js";
-import { CLIP_STEPS_MS } from "../clip-steps.js";
+import { CLIP_STEPS_MS, LISTEN_MORE_MS, pickClipStart } from "../clip-steps.js";
 import {
   searchSuggestions, evaluateFreeText, isCorrectPick, eligibleTracks, artistNames,
 } from "../clip-guess.js";
@@ -13,7 +13,6 @@ const GAME_ID = "clip";
 const STEPS = CLIP_STEPS_MS.length;
 const RESULT_DELAY_MS = 450;
 const HISTORY_LIMIT = 10;
-const LISTEN_MORE_MS = 15000;
 
 let handle = null;
 
@@ -113,11 +112,22 @@ function buildGamePanels() {
   handle.clipPlayer = clipPlayer;
   clipPlayer.el.classList.add("card", "clip-quiz__player");
 
+  // Which kind of start this song got (task T2): never the exact timestamp,
+  // that would give away the answer's position in the track.
+  const startKind = ui.el("span", { class: "chip chip--muted clip-quiz__start-kind" });
+  handle.startKind = startKind;
+
   const bodyHost = ui.el("div", { class: "clip-quiz__body" });
   handle.bodyHost = bodyHost;
 
-  handle.panels.replaceChildren(clipPlayer.el, bodyHost);
+  handle.panels.replaceChildren(startKind, clipPlayer.el, bodyHost);
   startRound();
+}
+
+function syncStartKind(fromMs) {
+  const label = fromMs > 0 ? "Desde algún momento de la canción" : "Desde el principio";
+  handle.startKind.textContent = label;
+  return label;
 }
 
 function announce(msg) {
@@ -135,11 +145,17 @@ function startRound() {
   handle.history.push(track.id);
   if (handle.history.length > HISTORY_LIMIT) handle.history.shift();
 
-  handle.round = { track, step: 0, attempts: new Array(STEPS).fill(null), pool };
-  handle.clipPlayer.setTrack(track);
+  // Decided once per song, right here when it is drawn: every step and
+  // "Escuchar más" afterwards all play from this same point.
+  const startMs = pickClipStart(track.duration_ms);
+
+  handle.round = { track, step: 0, attempts: new Array(STEPS).fill(null), pool, startMs };
+  handle.clipPlayer.setTrack(track, { fromMs: startMs });
   handle.clipPlayer.setStep(0);
+  const startLabel = syncStartKind(startMs);
   syncSkipLabel();
   renderGuessBody();
+  announce(`Nueva canción. ${startLabel}.`);
 }
 
 function syncSkipLabel() {

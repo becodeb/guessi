@@ -3708,6 +3708,13 @@ button {
   flex-direction: column;
 }
 
+/* A calm, compact tag (task T2): stays a pill instead of stretching to the
+   panel column's full width, and sits close to the player it describes. */
+.clip-quiz__start-kind {
+  align-self: flex-start;
+  margin-bottom: -8px;
+}
+
 .clip-quiz__guess {
   display: flex;
   flex-direction: column;
