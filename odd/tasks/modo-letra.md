@@ -66,12 +66,24 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   incl. a seeded ~50 % check over 4000 draws. A chip says «Desde el
   principio» / «Desde algún momento de la canción» (never a timestamp).
   Shots in `/tmp/guessi-shots/t2-final/` reviewed by the parent.
-- [ ] T3 New lyrics game: start screen (random vs pick a song from «Lo que
+- [x] T3 New lyrics game: start screen (random vs pick a song from «Lo que
   sé»), one short lyric fragment with a few blanks per song, timer, hint and
   "listen to the fragment" help that cost points, run of 5 songs with a
   results poster and persisted record. Pure logic unit-tested.
   Route: delegated (writer trigger: new module + lyrics.js + main.js + styles).
   Check: unit tests, `npm test`, harness shots desktop + mobile.
+  Evidence: `src/lyrics-quiz.js` (fragment of 2-4 lines, chorus weighted 4x,
+  4-6 blanks with distinct answers; 10 pts/word, up to +20 time bonus,
+  -4/hint, -6/listen, +15 perfect; a blank finished by a hint counts as
+  missed; streak = consecutive fragments fully typed by the player),
+  `lyrics.js` exposes LRC timestamps with a cache `schema` so old entries
+  refetch once. `npm test` 11/11 green (parent re-run). First shots were
+  functional but flat; parent asked one polish round (reveal poster,
+  start screen, word spacing, streak/record semantics). Final shots in
+  `/tmp/guessi-shots/t3-polish2/` reviewed by the parent; parent fixed a
+  voseo slip in the copy («Vos eliges» → «Tú eliges»).
+  Pending: the login collage still shows 4 games; real-device test with
+  sound (the harness has no audio).
 
 ## Acceptance criteria
 
@@ -98,7 +110,8 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 | plan | `fbd52c7` | this document |
 | T1 | `3062078` | RDD off; writer self-verification + parent spot check |
 | T2 | `b4e6025` | RDD off; writer self-verification + parent spot check |
+| T3 | `ecde786`, `4e28eaa`, `48c9a0c`, `d7964ae` | RDD off; logic, UI, polish round, copy fix |
 
 ## Next step
 
-T3 (lyrics game) with one writer.
+User test on the LAN harness (`http://192.168.1.37:8093/harness-app.html?demo=1#/juegos/letra`, snapshot of `d7964ae` in `/tmp/guessi-preview`), then merge to `main` and push when the user says so.
