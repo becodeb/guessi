@@ -85,6 +85,18 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   Pending: the login collage still shows 4 games; real-device test with
   sound (the harness has no audio).
 
+- [ ] T4 "Canción entera" mode inside «Completa la letra» (user, 2026-09-26:
+  the whole song's lyrics, no time limit, more relaxed). Start screen picks
+  the mode (timed fragments vs whole song) and then the source (random vs
+  pick). Whole song: every word masked, stanzas preserved; typing a word
+  fills every occurrence; progress count and %; free help (listen to the
+  first incomplete line via LRC timestamps, reveal a line, optional
+  first-letter mode); «Me rindo» reveals the rest with missed words marked;
+  end poster with % and words found; «Otra canción». Reuses lyrics-engine
+  without changing its rules. Route: delegated (same writer as T3).
+  Check: unit tests for any new pure logic, `npm test`, harness shots
+  desktop + mobile incl. a long song.
+
 ## Acceptance criteria
 
 - No "Saltar silencio" / offset skip anywhere in the UI; `npm test` green.
@@ -114,4 +126,5 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 
 ## Next step
 
+T4 (whole-song mode). Then: 
 User test on the LAN harness (`http://192.168.1.37:8093/harness-app.html?demo=1#/juegos/letra`, snapshot of `d7964ae` in `/tmp/guessi-preview`), then merge to `main` and push when the user says so.
