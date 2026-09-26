@@ -1,19 +1,27 @@
-// Game 5 — "Completa la letra": five short lyric fragments per run, a few
-// blanks per fragment, a draining timer, and help (Pista, Escuchar el
-// fragmento) that costs points. The song is either drawn at random or picked
-// by the player before each fragment. Works without Premium — only the
-// "listen" help needs it, everything else (typing, hints, scoring) does not.
+// Game 5 — "Completa la letra": two modes sharing one song-selection flow.
+// "Contrarreloj" (timed): five short lyric fragments per run, a few blanks
+// per fragment, a draining timer, and help that costs points. "Canción
+// entera" (task T4): the whole song, every word masked, no time limit, free
+// unlimited help — a relaxed, recreational sibling mode with no scoring.
+// The song is either drawn at random or picked by the player. Works without
+// Premium — only the "listen" helps need it, everything else does not.
 
 import * as ui from "../ui.js";
 import * as scores from "../scores.js";
 import { getLyrics } from "../lyrics.js";
+import { saveLyricsGameMode, loadLyricsGameMode } from "../storage.js";
 import { searchSuggestions, artistNames } from "../clip-guess.js";
-import { maskWord } from "../lyrics-engine.js";
+import { maskWord, tokenize, createLyricsGame } from "../lyrics-engine.js";
 import {
   SONGS_PER_RUN, FRAGMENT_TIMER_MS, LISTEN_CAP_MS, MAX_LISTENS_PER_FRAGMENT,
   HINT_COST, LISTEN_COST,
   buildFragment, createFragmentQuiz, findFragmentTiming, scoreFragment,
 } from "../lyrics-quiz.js";
+import { isUsableWholeSong, progressPercent, firstIncompleteLineIndex, firstIncompleteLineText } from "../lyrics-fullsong.js";
+
+// "Canción entera" (task T4): how long "Escuchar esta parte" plays. Kept
+// here rather than lyrics-quiz.js since it has nothing to do with scoring.
+const WHOLE_LISTEN_CAP_MS = 10000;
 
 // An invented teaser line (never real lyrics — same rule as every fixture in
 // this repo) shown on the start screen with a few words masked, just to show
@@ -31,20 +39,24 @@ const URGENT_MS = 8000; // last 8s of the timer get the urgent style
 let handle = null;
 
 export function mount(container, ctx) {
-  handle = { container, ctx, timers: [], run: null, round: null };
+  handle = { container, ctx, timers: [], run: null, round: null, whole: null };
   render();
 }
 
 export function unmount() {
   if (!handle) return;
   clearRoundTimers();
+  clearWholeTimers();
   for (const id of handle.timers) clearTimeout(id);
   handle.round?.listenState?.stop();
+  handle.whole?.listenState?.stop();
   handle.abort?.abort();
+  clearToastOffset();
   // Only save once per run: a natural "Ver resultados" already saved it, so
   // leaving right afterwards (the results screen is still this view) must
-  // not double-count the same run.
-  if (handle.run && !handle.run.saved && (handle.run.points > 0 || handle.run.streak > 0)) {
+  // not double-count the same run. Only the timed mode has a run with
+  // streak/points at all — "Canción entera" has no scoring to save.
+  if (handle.run?.gameMode === "timed" && !handle.run.saved && (handle.run.points > 0 || handle.run.streak > 0)) {
     scores.saveRun(GAME_ID, { streak: handle.run.streak, points: handle.run.points });
   }
   handle = null;
@@ -116,7 +128,19 @@ function choiceCard({ modifier, icon, title, desc, onClick }) {
   );
 }
 
-function renderStart() {
+// Two modes, one screen (task T4): "Contrarreloj" is the original run of 5
+// timed fragments; "Canción entera" is the whole song, untimed, no scoring.
+const LYRICS_MODES = {
+  timed: { label: "Contrarreloj", icon: "play", desc: "5 fragmentos de 45 s con ayudas que cuestan puntos." },
+  full: { label: "Canción entera", icon: "list", desc: "Toda la letra, sin límite de tiempo — a tu ritmo." },
+};
+
+/**
+ * Start screen, step 1 of 2: pick the mode. Skipped on a later visit when a
+ * mode was already remembered (see renderStart) — that step-B screen still
+ * offers a one-tap way back here, so remembering never removes the choice.
+ */
+function renderModeStep() {
   const rules = ui.el("div", { class: "row row--wrap lyrics-quiz__rules" },
     ui.el("span", { class: "chip chip--muted", text: "5 canciones" }),
     ui.el("span", { class: "chip chip--muted", text: "45 s por fragmento" }),
@@ -126,16 +150,16 @@ function renderStart() {
   const choices = ui.el("div", { class: "lyrics-quiz__choices" },
     choiceCard({
       modifier: "primary",
-      icon: "note",
-      title: "Al azar",
-      desc: "5 canciones sorpresa de «Lo que sé».",
-      onClick: () => startRun("random"),
+      icon: LYRICS_MODES.timed.icon,
+      title: LYRICS_MODES.timed.label,
+      desc: LYRICS_MODES.timed.desc,
+      onClick: () => pickMode("timed"),
     }),
     choiceCard({
-      icon: "search",
-      title: "Elijo yo",
-      desc: "Tú eliges cada canción, con un escape a una sorpresa cuando quieras.",
-      onClick: () => startRun("pick"),
+      icon: LYRICS_MODES.full.icon,
+      title: LYRICS_MODES.full.label,
+      desc: LYRICS_MODES.full.desc,
+      onClick: () => pickMode("full"),
     }),
   );
 
@@ -149,9 +173,57 @@ function renderStart() {
   );
 }
 
-function startRun(mode) {
-  handle.run = { mode, songNumber: 0, excludedIds: new Set(), streak: 0, points: 0, perfectCount: 0, saved: false };
-  handle.hud.update({ streak: 0, points: 0, best: scores.getRecord(GAME_ID).bestStreak });
+function pickMode(gameMode) {
+  try { saveLyricsGameMode(gameMode); } catch { /* best-effort convenience only */ }
+  renderSourceStep(gameMode);
+}
+
+/** Start screen, step 2 of 2: pick the source, now that the mode is known. */
+function renderSourceStep(gameMode) {
+  const modeInfo = LYRICS_MODES[gameMode];
+  const modeChip = ui.el("div", { class: "row row--wrap lyrics-quiz__mode-chip" },
+    ui.el("span", { class: "chip chip--muted", text: `Modo: ${modeInfo.label}` }),
+    ui.el("button", { class: "btn btn--ghost btn--sm", type: "button", text: "Cambiar", on: { click: () => renderModeStep() } }),
+  );
+
+  const choices = ui.el("div", { class: "lyrics-quiz__choices" },
+    choiceCard({
+      modifier: "primary",
+      icon: "note",
+      title: "Al azar",
+      desc: gameMode === "timed" ? "5 canciones sorpresa de «Lo que sé»." : "Una canción sorpresa de «Lo que sé».",
+      onClick: () => startRun(gameMode, "random"),
+    }),
+    choiceCard({
+      icon: "search",
+      title: "Elijo yo",
+      desc: "Tú eliges cada canción, con un escape a una sorpresa cuando quieras.",
+      onClick: () => startRun(gameMode, "pick"),
+    }),
+  );
+
+  handle.panels.replaceChildren(
+    ui.el("div", { class: "card lyrics-quiz__start" }, modeChip, choices),
+  );
+}
+
+function renderStart() {
+  const remembered = (() => {
+    try { return loadLyricsGameMode(); } catch { return null; }
+  })();
+  if (remembered && LYRICS_MODES[remembered]) renderSourceStep(remembered);
+  else renderModeStep();
+}
+
+function startRun(gameMode, source) {
+  handle.run = { gameMode, source, excludedIds: new Set() };
+  if (gameMode === "timed") {
+    Object.assign(handle.run, { songNumber: 0, streak: 0, points: 0, perfectCount: 0, saved: false });
+    handle.hud.el.hidden = false;
+    handle.hud.update({ streak: 0, points: 0, best: scores.getRecord(GAME_ID).bestStreak });
+  } else {
+    handle.hud.el.hidden = true;
+  }
   advance();
 }
 
@@ -163,11 +235,11 @@ function eligiblePool() {
 }
 
 function advance() {
-  if (handle.run.songNumber >= SONGS_PER_RUN) {
+  if (handle.run.gameMode === "timed" && handle.run.songNumber >= SONGS_PER_RUN) {
     showResults();
     return;
   }
-  if (handle.run.mode === "pick") renderPicker();
+  if (handle.run.source === "pick") renderPicker();
   else drawRandomAndLoad();
 }
 
@@ -233,9 +305,13 @@ function renderPicker(errorMsg) {
     on: { click: () => drawRandomAndLoad() },
   });
 
+  const pickerTitle = handle.run.gameMode === "timed"
+    ? `Elige la canción ${handle.run.songNumber + 1} de ${SONGS_PER_RUN}`
+    : "Elige una canción";
+
   handle.panels.replaceChildren(
     ui.el("div", { class: "card lyrics-quiz__picker" },
-      ui.el("p", { class: "guess-panel__title", text: `Elige la canción ${handle.run.songNumber + 1} de ${SONGS_PER_RUN}` }),
+      ui.el("p", { class: "guess-panel__title", text: pickerTitle }),
       errorMsg ? ui.el("p", { class: "small dim", text: errorMsg }) : null,
       ui.el("div", { class: "combobox" }, input, listbox),
       randomBtn,
@@ -250,6 +326,7 @@ function loadSong(track) {
   handle.abort?.abort();
   const controller = new AbortController();
   handle.abort = controller;
+  clearToastOffset(); // leaving whatever screen we were on for a genuinely new one
 
   handle.panels.replaceChildren(
     ui.el("div", { class: "card lyrics-quiz__loading" },
@@ -265,6 +342,17 @@ function loadSong(track) {
       handleNoLyrics(track);
       return;
     }
+
+    if (handle.run.gameMode === "full") {
+      if (!isUsableWholeSong(res.text)) {
+        handleNoLyrics(track);
+        return;
+      }
+      handle.run.excludedIds.add(track.id);
+      startWholeSong(track, res.text, res.lines);
+      return;
+    }
+
     const fragment = buildFragment(res.text, { rng: Math.random });
     if (!fragment) {
       handleNoLyrics(track);
@@ -279,7 +367,7 @@ function loadSong(track) {
 function handleNoLyrics(track) {
   if (!handle) return;
   handle.run.excludedIds.add(track.id);
-  if (handle.run.mode === "random") {
+  if (handle.run.source === "random") {
     drawRandomAndLoad();
   } else {
     renderPicker(`No encontré la letra de «${track.name}». Elige otra canción.`);
@@ -318,19 +406,37 @@ function songHeader(track) {
  * not collapse to a normal single-space width), which is fine for
  * round-game.js's per-word buttons but not for plain reading text here.
  * `renderToken(tok)` returns the element for one word/punctuation token.
+ * `lineEls`, when given, gets one entry pushed per source line (`null` for a
+ * blank line) — "Canción entera" uses this to scroll to a specific line.
  */
-function buildLinesHost(lines, renderToken) {
+function buildLinesHost(lines, renderToken, lineEls) {
   const host = ui.el("div", { class: "lyrics-quiz__lines" });
   for (const lineTokens of lines) {
-    if (lineTokens.length === 0) { host.append(ui.el("span", { class: "lyrics-quiz__gap", "aria-hidden": "true" })); continue; }
+    if (lineTokens.length === 0) {
+      host.append(ui.el("span", { class: "lyrics-quiz__gap", "aria-hidden": "true" }));
+      lineEls?.push(null);
+      continue;
+    }
     const lineEl = ui.el("p", { class: "lyrics-quiz__line" });
     lineTokens.forEach((tok, i) => {
       if (i > 0) lineEl.append(" ");
       lineEl.append(renderToken(tok));
     });
     host.append(lineEl);
+    lineEls?.push(lineEl);
   }
   return host;
+}
+
+function prefersReducedMotion() {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 // --- fragment gameplay -------------------------------------------------------------
@@ -667,6 +773,382 @@ function showResults() {
 
   handle.panels.replaceChildren(
     ui.el("div", { class: "lyrics-quiz__result" }, poster, ui.el("div", { class: "row" }, againBtn, backBtn)),
+  );
+  againBtn.focus();
+}
+
+// --- "Canción entera" gameplay (task T4) ------------------------------------
+// Reuses lyrics-engine.js's createLyricsGame/tokenize/maskWord exactly as
+// round-game.js does — no engine rule is touched here. The only "new" moves
+// (reveal one whole line, find the first incomplete line) are built from the
+// engine's existing primitives (moveCursor + hint, and isRevealed), same
+// contract lyrics-fullsong.js documents.
+
+function startWholeSong(track, text, syncedLines) {
+  const engine = createLyricsGame(text);
+  const { lines } = tokenize(text);
+
+  handle.whole = {
+    track, engine, lines, syncedLines: syncedLines ?? null,
+    wordEls: new Map(), lineEls: [],
+    helpCounts: { linesRevealed: 0, listens: 0, firstLettersUsed: false },
+    showFirstLetters: false,
+    startedAt: 0, tickId: null,
+    listenState: null,
+    helpButtons: [],
+    confirming: false,
+    ended: false,
+  };
+
+  renderWholeSong();
+  startElapsedTimer();
+}
+
+function maskForWhole(whole, i) {
+  const { engine, showFirstLetters } = whole;
+  if (engine.isRevealed(i)) return engine.words[i].text;
+  const level = Math.max(engine.hintLevel(i), showFirstLetters ? 1 : 0);
+  return maskWord(engine.words[i].text, level);
+}
+
+function refreshMasks(whole) {
+  for (const [i, span] of whole.wordEls) {
+    if (!whole.engine.isRevealed(i)) span.textContent = maskForWhole(whole, i);
+  }
+}
+
+/** Reveals the exact word at `i` via moveCursor+hint (see lyrics-fullsong.js's tests for why not revealAnywhere: duplicates elsewhere would reveal the wrong occurrence). */
+function revealWordFully(engine, i) {
+  if (engine.isRevealed(i)) return;
+  engine.moveCursor(i);
+  while (!engine.isRevealed(i)) engine.hint();
+}
+
+function refreshWordSpan(whole, i) {
+  const span = whole.wordEls.get(i);
+  if (!span) return;
+  span.textContent = whole.engine.words[i].text;
+  span.classList.add("lyrics-quiz__mask--found");
+  ui.pop(span);
+}
+
+function scrollToLine(whole, index) {
+  const el = whole.lineEls[index];
+  if (!el) return;
+  el.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+
+function scrollToFirstIncompleteLine(whole) {
+  const idx = firstIncompleteLineIndex(whole.lines, whole.engine);
+  if (idx !== -1) scrollToLine(whole, idx);
+}
+
+function renderWholeSong() {
+  const whole = handle.whole;
+  const { track } = whole;
+
+  whole.wordEls.clear();
+  whole.lineEls = [];
+  const linesHost = buildLinesHost(whole.lines, (tok) => {
+    if (!tok.isWord) return ui.el("span", { class: "lyrics-quiz__punct", text: tok.text });
+    const span = ui.el("span", { class: "lyrics-quiz__mask", text: maskForWhole(whole, tok.wordIndex) });
+    whole.wordEls.set(tok.wordIndex, span);
+    return span;
+  }, whole.lineEls);
+
+  const progressText = ui.el("span", { class: "small dim lyrics-quiz__progress-text" });
+  const progressFill = ui.el("div", { class: "lyrics-quiz__progress-fill" });
+  const progressTrack = ui.el("div", { class: "lyrics-quiz__progress", "aria-hidden": "true" }, progressFill);
+  const elapsedText = ui.el("span", { class: "small dim lyrics-quiz__elapsed" });
+  whole.progressText = progressText;
+  whole.progressFill = progressFill;
+  whole.elapsedText = elapsedText;
+  updateWholeProgress();
+
+  const input = ui.el("input", {
+    class: "input lyrics-quiz__input",
+    type: "text",
+    autocomplete: "off",
+    autocapitalize: "off",
+    spellcheck: "false",
+    placeholder: "Escribe una palabra de la letra…",
+    "aria-label": "Palabra de la letra",
+  });
+  whole.input = input;
+
+  function commit(raw) {
+    const word = raw.trim();
+    if (!word) return;
+    const hits = fillEverywhere(whole, word);
+    if (hits.length > 0) applyHits(whole, hits, word);
+    else ui.shake(input);
+    input.value = "";
+  }
+
+  input.addEventListener("input", () => {
+    const val = input.value;
+    const hits = fillEverywhere(whole, val.trim());
+    if (hits.length > 0) {
+      applyHits(whole, hits, val.trim());
+      input.value = "";
+      return;
+    }
+    if (/\s$/.test(val)) commit(val);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(input.value); }
+  });
+
+  const revealLineBtn = ui.el("button", {
+    class: "btn btn--ghost btn--sm", type: "button", text: "Revelar línea",
+    on: { click: () => revealFirstIncompleteLine() },
+  });
+  const firstLettersBtn = ui.el("button", {
+    class: "btn btn--ghost btn--sm", type: "button", text: "Mostrar primeras letras",
+    "aria-pressed": "false",
+    on: { click: () => toggleFirstLetters(firstLettersBtn) },
+  });
+  const giveUpBtn = ui.el("button", { class: "btn btn--ghost btn--sm", type: "button", text: "Me rindo" });
+  const giveUpYes = ui.el("button", { class: "btn btn--primary btn--sm", type: "button", text: "Sí, terminar" });
+  const giveUpNo = ui.el("button", { class: "btn btn--ghost btn--sm", type: "button", text: "Cancelar" });
+  const giveUpConfirm = ui.el("span", { class: "row lyrics-quiz__giveup-confirm", hidden: true },
+    ui.el("span", { class: "small dim", text: "¿Seguro?" }), giveUpYes, giveUpNo,
+  );
+  // Declared now, assigned once the controls bar itself exists below —
+  // these two handlers only run later, once the player actually clicks.
+  let controlsEl;
+  giveUpBtn.addEventListener("click", () => {
+    whole.confirming = true;
+    giveUpBtn.hidden = true;
+    giveUpConfirm.hidden = false;
+    if (controlsEl) updateToastOffset(controlsEl); // the confirm row can wrap taller on narrow screens
+  });
+  giveUpNo.addEventListener("click", () => {
+    whole.confirming = false;
+    giveUpConfirm.hidden = true;
+    giveUpBtn.hidden = false;
+    if (controlsEl) updateToastOffset(controlsEl);
+  });
+  giveUpYes.addEventListener("click", () => finishWholeSong("gaveup"));
+
+  const listenRow = buildWholeListenControl(whole);
+
+  whole.helpButtons = [revealLineBtn, firstLettersBtn, giveUpBtn, ...listenRow.filter((el) => el.tagName === "BUTTON")];
+
+  controlsEl = ui.el("div", { class: "lyrics-quiz__whole-controls" },
+    input,
+    ui.el("div", { class: "lyrics-quiz__help row row--wrap" },
+      revealLineBtn, firstLettersBtn, ...listenRow, giveUpBtn, giveUpConfirm,
+    ),
+  );
+
+  handle.panels.replaceChildren(
+    ui.el("div", { class: "lyrics-quiz__whole" },
+      ui.el("div", { class: "card lyrics-quiz__whole-header" },
+        songHeader(track),
+        ui.el("div", { class: "row row--between" }, progressText, elapsedText),
+        progressTrack,
+      ),
+      linesHost,
+      controlsEl,
+    ),
+  );
+  input.focus();
+  // The sticky bar and the toast host both anchor to the viewport bottom —
+  // push toasts above it (measured, not guessed: the give-up confirm row
+  // can make it taller than the plain input+buttons row).
+  requestAnimationFrame(() => updateToastOffset(controlsEl));
+}
+
+function updateToastOffset(el) {
+  try {
+    document.body.style.setProperty("--toast-offset-bottom", `${el.offsetHeight + 24}px`);
+  } catch {
+    // Best-effort only — a missing offset just means a toast can land a
+    // little low, never a crash.
+  }
+}
+
+function clearToastOffset() {
+  try {
+    document.body.style.removeProperty("--toast-offset-bottom");
+  } catch {
+    // Best-effort only.
+  }
+}
+
+function fillEverywhere(whole, word) {
+  if (!word) return [];
+  const hits = [];
+  let res = whole.engine.revealAnywhere(word);
+  while (res.ok) {
+    hits.push(res.revealedIndex);
+    res = whole.engine.revealAnywhere(word);
+  }
+  return hits;
+}
+
+function applyHits(whole, hits, word) {
+  for (const i of hits) refreshWordSpan(whole, i);
+  updateWholeProgress();
+  announce(hits.length > 1 ? `${hits.length} apariciones de «${word}».` : "Correcto.");
+  if (hits.length > 1) ui.toast(`+${hits.length} apariciones de «${word}»`, "success");
+  if (whole.engine.isComplete()) finishWholeSong("complete");
+}
+
+function revealFirstIncompleteLine() {
+  const whole = handle.whole;
+  if (whole.ended) return;
+  const idx = firstIncompleteLineIndex(whole.lines, whole.engine);
+  if (idx === -1) return;
+  for (const tok of whole.lines[idx]) {
+    if (tok.isWord) revealWordFully(whole.engine, tok.wordIndex);
+  }
+  whole.helpCounts.linesRevealed += 1;
+  refreshLine(whole, idx);
+  updateWholeProgress();
+  scrollToLine(whole, idx);
+  if (whole.engine.isComplete()) finishWholeSong("complete");
+}
+
+function refreshLine(whole, index) {
+  for (const tok of whole.lines[index]) {
+    if (tok.isWord) refreshWordSpan(whole, tok.wordIndex);
+  }
+}
+
+function toggleFirstLetters(btn) {
+  const whole = handle.whole;
+  if (whole.ended) return;
+  whole.showFirstLetters = !whole.showFirstLetters;
+  if (whole.showFirstLetters) whole.helpCounts.firstLettersUsed = true;
+  btn.setAttribute("aria-pressed", String(whole.showFirstLetters));
+  refreshMasks(whole);
+}
+
+/** "Escuchar esta parte": free, unlimited — Premium + synced timing only, re-targeted to the first incomplete line on every click. */
+function buildWholeListenControl(whole) {
+  const { ctx } = handle;
+
+  if (!ctx.player.isPremium()) {
+    return [ui.el("p", { class: "small dim lyrics-quiz__help-note", text: "Necesitas Spotify Premium para escuchar." })];
+  }
+  if (!whole.syncedLines) {
+    return [ui.el("p", { class: "small dim lyrics-quiz__help-note", text: "No hay tiempos sincronizados para esta canción." })];
+  }
+
+  let playing = false;
+  const btn = ui.el("button", { class: "btn btn--ghost btn--sm", type: "button", text: "Escuchar esta parte" });
+  btn.addEventListener("click", async () => {
+    if (playing) { ctx.player.stop(); return; }
+    if (whole.ended) return;
+    const lineText = firstIncompleteLineText(whole.lines, whole.engine);
+    if (!lineText) return;
+    const timing = findFragmentTiming([lineText], whole.syncedLines, { capMs: WHOLE_LISTEN_CAP_MS });
+    if (!timing) { ui.toast("No encontré el tiempo de esta parte.", "info"); return; }
+    if (!ctx.player.isPrimed(whole.track.uri)) await ctx.player.prime(whole.track.uri, { positionMs: timing.startMs });
+    if (!handle || handle.whole !== whole || whole.ended) return;
+    whole.helpCounts.listens += 1;
+    playing = true;
+    btn.textContent = "Detener";
+    scrollToFirstIncompleteLine(whole);
+    ctx.player.playClip(timing.durationMs, {
+      fromMs: timing.startMs,
+      onEnd: () => { playing = false; btn.textContent = "Escuchar esta parte"; },
+    });
+  });
+  whole.listenState = { stop: () => { if (playing) ctx.player.stop(); } };
+  return [btn];
+}
+
+function updateWholeProgress() {
+  const whole = handle?.whole;
+  if (!whole) return;
+  const found = whole.engine.revealedCount();
+  const total = whole.engine.totalWords();
+  const pct = progressPercent(found, total);
+  whole.progressText.textContent = `${found} de ${total} palabras · ${pct} %`;
+  whole.progressFill.style.width = `${pct}%`;
+}
+
+function startElapsedTimer() {
+  const whole = handle.whole;
+  whole.startedAt = Date.now();
+  updateElapsed();
+  whole.tickId = setInterval(updateElapsed, 1000);
+}
+
+function updateElapsed() {
+  const whole = handle?.whole;
+  if (!whole) return;
+  whole.elapsedText.textContent = `Tiempo: ${formatElapsed(Date.now() - whole.startedAt)}`;
+}
+
+function clearWholeTimers() {
+  clearInterval(handle?.whole?.tickId);
+}
+
+function finishWholeSong(reason) {
+  const whole = handle.whole;
+  if (whole.ended) return;
+  whole.ended = true;
+  clearWholeTimers();
+  whole.listenState?.stop();
+  whole.input.disabled = true;
+  for (const btn of whole.helpButtons) btn.disabled = true;
+  // Deliberately NOT cleared here: a toast from just before finishing (e.g.
+  // "+6 apariciones de «amor»") can still be animating out on the reveal
+  // screen for a couple more seconds, and clearing the offset immediately
+  // would drop it right onto "Otra canción"/"Volver a Juegos". loadSong()
+  // clears it once a genuinely new screen (any next song, any mode) starts.
+
+  const total = whole.engine.totalWords();
+  const found = whole.engine.revealedCount();
+  const wasRevealed = new Set();
+  for (let i = 0; i < total; i++) {
+    if (whole.engine.isRevealed(i)) wasRevealed.add(i);
+  }
+  whole.engine.revealAll();
+
+  const pct = progressPercent(found, total);
+  const totalHelps = whole.helpCounts.linesRevealed + whole.helpCounts.listens + (whole.helpCounts.firstLettersUsed ? 1 : 0);
+  announce(reason === "complete" ? "¡Letra completa!" : `Te rendiste. Encontraste ${found} de ${total} palabras.`);
+
+  showWholeSongReveal({ track: whole.track, lines: whole.lines, wasRevealed, pct, found, total, totalHelps });
+}
+
+function showWholeSongReveal({ track, lines, wasRevealed, pct, found, total, totalHelps }) {
+  const album = track.album;
+
+  const linesHost = buildLinesHost(lines, (tok) => {
+    if (!tok.isWord) return ui.el("span", { class: "lyrics-quiz__punct", text: tok.text });
+    const missed = !wasRevealed.has(tok.wordIndex);
+    return ui.el("span", {
+      class: `lyrics-quiz__word${missed ? " lyrics-quiz__word--missed" : ""}`,
+      text: tok.text,
+    });
+  });
+
+  // No score, no record — this leads with the percentage the way the timed
+  // mode's results poster leads with points, per the same "the real result
+  // first" rule from the T3 polish round.
+  const poster = ui.revealPoster({
+    paper: "white",
+    title: `${pct} %`,
+    lines: [
+      `${track.name} — ${artistNames(track).join(", ")}`,
+      `${found} de ${total} palabras`,
+      `Ayudas usadas: ${totalHelps}`,
+    ],
+    coverUrl: album?.images?.[0]?.url,
+    stamp: pct === 100 ? "¡Completo!" : undefined,
+  });
+
+  const againBtn = ui.el("button", { class: "btn btn--primary", type: "button", text: "Otra canción", on: { click: () => advance() } });
+  const backBtn = ui.el("a", { class: "btn btn--ghost", href: "#/juegos", text: "Volver a Juegos" });
+
+  handle.panels.replaceChildren(
+    ui.el("div", { class: "lyrics-quiz__reveal" }, poster, linesHost, ui.el("div", { class: "row" }, againBtn, backBtn)),
   );
   againBtn.focus();
 }

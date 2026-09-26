@@ -1272,7 +1272,12 @@ button {
 
 .toast-host {
   position: fixed;
-  bottom: 24px;
+  /* "Canción entera" (task T4) raises this while its own sticky input/help
+     bar is on screen, so a toast (e.g. "+6 apariciones de «amor»") never
+     lands on top of those controls — both are otherwise anchored to the
+     same viewport edge. Cleared back to the default the moment that bar
+     leaves the screen (see lyrics-game.js's updateToastOffset/clearToastOffset). */
+  bottom: var(--toast-offset-bottom, 24px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -4154,4 +4159,88 @@ button {
   flex-direction: column;
   gap: var(--gap-lg);
   align-items: flex-start;
+}
+
+/* --------------------------------------------------------------------------
+   "Canción entera" (task T4): mode-choice chip, whole-song header/progress,
+   the lighter per-word mask (every word, not just a sparse few blanks), the
+   sticky input+help bar, and the inline "Me rindo" confirm.
+   -------------------------------------------------------------------------- */
+
+.lyrics-quiz__mode-chip {
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.lyrics-quiz__whole {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+}
+
+.lyrics-quiz__whole-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.lyrics-quiz__progress {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--field);
+  overflow: hidden;
+}
+
+.lyrics-quiz__progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--game, var(--chalk));
+  transition: width 300ms var(--ease-out);
+}
+
+/* Every word masked (not a sparse few blanks): a heavy colored pill per word
+   would be visual noise over a whole song, so this is a much quieter
+   treatment — a dim underline, no background — that still reads as "this
+   word is hidden" at a glance across a long block of text. */
+.lyrics-quiz__mask {
+  color: var(--text-dim);
+  border-bottom: 1px dashed var(--line-strong);
+  letter-spacing: 0.06em;
+}
+
+.lyrics-quiz__mask--found {
+  color: var(--text);
+  border-bottom: none;
+  letter-spacing: normal;
+}
+
+/* Sticky input + help bar: long lyrics make the page itself tall, so the
+   controls a player actually needs (type, listen, reveal, give up) must
+   never require scrolling back down to reach — same idea as round-game's
+   own sticky bar (round__bar), bottom-anchored instead of top-anchored, and
+   plain on every viewport (not just mobile: a very long song is just as
+   tall on desktop). */
+.lyrics-quiz__whole-controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+.lyrics-quiz__giveup-confirm {
+  align-items: center;
+}
+
+/* A pressed help toggle ("Mostrar primeras letras") reads as active without a
+   whole extra modifier class — aria-pressed is already there for a11y. */
+.lyrics-quiz__help button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--game, var(--chalk)) 20%, transparent);
+  border-color: var(--game, var(--line-strong));
+  color: var(--text);
 }

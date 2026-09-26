@@ -141,8 +141,51 @@ function pickSuggestion(query, { index = 0 } = {}) {
 // — every time this script runs.
 function startRandomRun() {
   return async (page) => {
+    // Two clicks now (task T4): step 1 picks the mode (Contrarreloj is the
+    // primary choice there too), step 2 picks the source (Al azar). Both
+    // steps render into the same start card and reuse the same
+    // ".lyrics-quiz__choice--primary" class for their left/primary option.
+    await page.locator(".lyrics-quiz__choice--primary").click();
     await page.locator(".lyrics-quiz__choice--primary").click();
     await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
+  };
+}
+
+// task T4: same two-step start, but picks "Canción entera" then "Al azar".
+function startFullSongRun() {
+  return async (page) => {
+    await page.locator(".lyrics-quiz__choice", { hasText: "Canción entera" }).click();
+    await page.locator(".lyrics-quiz__choice--primary").click();
+    await page.waitForSelector(".lyrics-quiz__whole", { timeout: 8000 });
+  };
+}
+
+// "estribillo", "palabras" and "jugador" each appear 5-6 times across
+// harness-app.html's long fixture (verified by word-frequency count, not
+// guessed) — typing one lights up every occurrence at once, the whole point
+// of "Canción entera"'s fill-everywhere rule.
+function typeSomeWholeWords() {
+  return async (page) => {
+    const input = page.locator(".lyrics-quiz__whole-controls .lyrics-quiz__input").first();
+    for (const word of ["estribillo", "palabras", "jugador"]) {
+      if (await input.isDisabled().catch(() => true)) break;
+      await input.fill(word).catch(() => {});
+      await page.waitForTimeout(30);
+    }
+  };
+}
+
+function toggleWholeFirstLetters() {
+  return async (page) => {
+    await page.locator(".lyrics-quiz__whole-controls button", { hasText: "Mostrar primeras letras" }).click();
+  };
+}
+
+function giveUpWholeSong() {
+  return async (page) => {
+    await page.locator(".lyrics-quiz__whole-controls button", { hasText: "Me rindo" }).click();
+    await page.locator(".lyrics-quiz__whole-controls button", { hasText: "Sí, terminar" }).click();
+    await page.waitForSelector(".lyrics-quiz__reveal", { timeout: 4000 });
   };
 }
 
@@ -192,7 +235,8 @@ function typeSomeKnownWords() {
 
 function playFullLyricsRun() {
   return async (page) => {
-    await page.locator(".lyrics-quiz__choice--primary").click();
+    await page.locator(".lyrics-quiz__choice--primary").click(); // mode: Contrarreloj
+    await page.locator(".lyrics-quiz__choice--primary").click(); // source: Al azar
     for (let song = 0; song < 5; song++) {
       await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
       await completeFragmentViaHints()(page);
@@ -273,6 +317,25 @@ const TARGETS = [
   { name: "letra-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
     stubRandom: true,
     interaction: async (page) => { await startRandomRun()(page); },
+    settleWait: ".lyrics-quiz__help-note" },
+
+  // "Canción entera" (task T4). ?longsong=1 serves harness-app.html's long
+  // invented fixture instead of the short one the targets above use, so the
+  // timed-mode shots above are untouched by this mode's own fixture.
+  { name: "letra-mode-choice", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start" },
+  { name: "letra-full-mid", query: { longsong: "1" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startFullSongRun()(page); await typeSomeWholeWords()(page); } },
+  { name: "letra-full-firstletters", query: { longsong: "1" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startFullSongRun()(page); await toggleWholeFirstLetters()(page); } },
+  { name: "letra-full-giveup", query: { longsong: "1" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startFullSongRun()(page); await typeSomeWholeWords()(page); await giveUpWholeSong()(page); },
+    settleWait: ".lyrics-quiz__reveal" },
+  { name: "letra-full-nonpremium", query: { longsong: "1", premium: "0" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => { await startFullSongRun()(page); },
     settleWait: ".lyrics-quiz__help-note" },
 ];
 

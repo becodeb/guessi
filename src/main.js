@@ -440,7 +440,7 @@ function renderHub(view) {
       game: "letra",
       paper: "white",
       title: "Completa la letra",
-      desc: "Un pedazo de letra con huecos. Llénalos antes de que se acabe el tiempo; si te trabas, escucha el fragmento.",
+      desc: "Contrarreloj con fragmentos y ayudas que cuestan puntos, o la canción entera a tu ritmo, sin límite de tiempo.",
     }),
   );
 

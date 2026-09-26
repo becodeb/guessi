@@ -67,6 +67,10 @@
       // the instant auth.isAuthenticated() is true, so reaching /login at all
       // means shipping a page load with NO tokens seeded.
       var AUTHED = params.get("authed") !== "0"; // default: logged in
+      // task T4 ("Canción entera"): serves a long invented song from LRCLIB
+      // instead of the short PLACEHOLDER_LYRICS, so the whole-song mode has
+      // something worth scrolling through.
+      var LONGSONG = params.get("longsong") === "1";
 
       // --- fake catalog ------------------------------------------------------
       // ~10 real Latin/Argentine rock & pop albums, ~4 tracks each (~40 tracks),
@@ -446,15 +450,95 @@
         "[00:30.00]Con otras líneas que nadie va a leer\n" +
         "[00:45.00]";
 
+      // task T4 ("Canción entera"): a longer invented song (never real
+      // lyrics, same rule as above) — 42 non-blank lines across 5 verse-like
+      // stanzas plus a 4-line chorus repeated 3 times, so the whole-song
+      // mode has enough to scroll through and enough repetition for "typing
+      // one word lights up several spots" to be visible. Built from an array
+      // + a small timestamp generator instead of hand-typed [mm:ss.xx] tags,
+      // since transcribing 42 of those by hand invites off-by-one mistakes.
+      var LONG_LYRICS_LINES = [
+        "Este es un ensayo de letra larga",
+        "Inventada solo para la pantalla",
+        "Ningún verso aquí pertenece a nadie",
+        "Es apenas texto que se puede armar",
+        "",
+        "Primera estrofa de la canción de prueba",
+        "Con palabras que se pueden repetir",
+        "El arnés no reproduce nada real",
+        "Solo existe para hacer funcionar el test",
+        "Y comprobar que el modo entero cierra bien",
+        "",
+        "Estribillo grande que se repite mil veces",
+        "Para que el jugador lo reconozca fácil",
+        "Palabras que vuelven una y otra vez",
+        "Cantando siempre el mismo estribillo",
+        "",
+        "Segunda estrofa del texto de prueba",
+        "Con otras líneas que nadie cantará",
+        "Cada palabra puede repetirse",
+        "El jugador la escribe una vez nomás",
+        "Y toda ocurrencia se completa igual",
+        "",
+        "Estribillo grande que se repite mil veces",
+        "Para que el jugador lo reconozca fácil",
+        "Palabras que vuelven una y otra vez",
+        "Cantando siempre el mismo estribillo",
+        "",
+        "Tercera estrofa de relleno para el harness",
+        "Ninguna palabra aquí es de una canción real",
+        "Sirve para medir el largo de la letra",
+        "Y ver que la barra de progreso avanza",
+        "Sin apuro y sin límite de tiempo",
+        "",
+        "Cuarta estrofa que suma más palabras",
+        "Para que la canción sea bien larga",
+        "Con títulos y nombres inventados aquí",
+        "Ningún artista real canta esto jamás",
+        "Es solo relleno para el modo sin reloj",
+        "Y para probar que la barra sigue bien",
+        "",
+        "Estribillo grande que se repite mil veces",
+        "Para que el jugador lo reconozca fácil",
+        "Palabras que vuelven una y otra vez",
+        "Cantando siempre el mismo estribillo",
+        "",
+        "Última estrofa antes de terminar",
+        "El texto de prueba se acerca a su final",
+        "Todas las palabras se pueden encontrar",
+        "O el jugador se puede simplemente rendir",
+        "Y la letra entera se revela igual",
+      ];
+      var PLACEHOLDER_LYRICS_LONG = LONG_LYRICS_LINES.join("\n");
+
+      function pad2(n) {
+        var s = String(n);
+        return s.length < 2 ? "0" + s : s;
+      }
+      function lrcTag(ms) {
+        var totalCs = Math.round(ms / 10);
+        var m = Math.floor(totalCs / 6000);
+        var s = Math.floor((totalCs % 6000) / 100);
+        var cs = totalCs % 100;
+        return "[" + pad2(m) + ":" + pad2(s) + "." + pad2(cs) + "]";
+      }
+      // One tag every 3s, in source-line order (blank stanza breaks get no
+      // tag/text at all — parseSyncedLyrics drops those either way).
+      var PLACEHOLDER_SYNCED_LYRICS_LONG = LONG_LYRICS_LINES.map(function (line, i) {
+        return line ? lrcTag(i * 3000) + line : "";
+      }).join("\n");
+
       function handleLrclib(u) {
+        var lyrics = LONGSONG ? PLACEHOLDER_LYRICS_LONG : PLACEHOLDER_LYRICS;
+        var synced = LONGSONG ? PLACEHOLDER_SYNCED_LYRICS_LONG : PLACEHOLDER_SYNCED_LYRICS;
         if (u.pathname === "/api/get") {
-          return json({ plainLyrics: PLACEHOLDER_LYRICS, syncedLyrics: PLACEHOLDER_SYNCED_LYRICS, instrumental: false });
+          return json({ plainLyrics: lyrics, syncedLyrics: synced, instrumental: false });
         }
         if (u.pathname === "/api/search") {
           return json([{
             trackName: u.searchParams.get("track_name") || "",
             artistName: u.searchParams.get("artist_name") || "",
-            plainLyrics: PLACEHOLDER_LYRICS, syncedLyrics: PLACEHOLDER_SYNCED_LYRICS, instrumental: false, duration: 220,
+            plainLyrics: lyrics, syncedLyrics: synced, instrumental: false, duration: 220,
           }]);
         }
         return json([]);
