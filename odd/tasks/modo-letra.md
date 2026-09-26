@@ -133,5 +133,7 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 
 ## Next step
 
-
-User test on the LAN harness (`http://192.168.1.37:8093/harness-app.html?demo=1#/juegos/letra`, snapshot of the branch head in `/tmp/guessi-preview`), then merge to `main` and push when the user says so.
+Done. 2026-09-26: `main` fast-forwarded to `22d7795` and pushed on the
+user's word; Coolify deployment of `22d7795` finished and production serves
+`src/lyrics-fullsong.js` (200) with no «Saltar silencio» left. Open: real
+audio test on production, login collage still shows 4 games.
