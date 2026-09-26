@@ -134,7 +134,7 @@ function renderStart() {
     choiceCard({
       icon: "search",
       title: "Elijo yo",
-      desc: "Vos eliges cada canción, con un escape a una sorpresa cuando quieras.",
+      desc: "Tú eliges cada canción, con un escape a una sorpresa cuando quieras.",
       onClick: () => startRun("pick"),
     }),
   );
