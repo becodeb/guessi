@@ -190,7 +190,12 @@ export function buildFragment(text, opts = {}) {
  * @param {{words: Array, blankIndices: number[]}} spec  from buildFragment()
  */
 export function createFragmentQuiz({ words, blankIndices }) {
-  const filled = new Set();
+  const filled = new Set(); // no longer blank — typed correctly OR fully hinted
+  const typed = new Set(); // filled by tryWord specifically — the ONLY ones that
+  // "count" (score points, count toward a completed/perfect fragment and the
+  // run streak). A blank a hint fully reveals is filled (no longer blank on
+  // screen) but stays out of `typed` — the player didn't find it, the hint
+  // did, so it reads as missed everywhere scoring or the streak looks at.
   const hints = new Map(); // blank index -> revealed letter count
   let hintCalls = 0;
 
@@ -203,20 +208,26 @@ export function createFragmentQuiz({ words, blankIndices }) {
   }
 
   /** Typed word vs every unfilled blank (accent/case/punctuation-insensitive). */
-  function tryWord(typed) {
-    const norm = normalize(typed);
+  function tryWord(typedText) {
+    const norm = normalize(typedText);
     if (!norm) return { ok: false, index: null, done: false };
     for (const i of blankIndices) {
       if (filled.has(i)) continue;
       if (words[i].normalized === norm) {
         filled.add(i);
+        typed.add(i);
         return { ok: true, index: i, done: isComplete() };
       }
     }
     return { ok: false, index: null, done: false };
   }
 
-  /** Reveal the next letter of the earliest unfilled blank; costs one use. */
+  /**
+   * Reveal the next letter of the earliest unfilled blank; costs one use.
+   * When this is the letter that completes the word, the blank becomes
+   * filled but NOT typed (see the `typed` set above) — a hint finished it,
+   * not the player.
+   */
   function hint() {
     const i = blankIndices.find((idx) => !filled.has(idx));
     if (i == null) return { ok: false, index: null, hintLevel: 0, filled: false, done: false };
@@ -234,6 +245,7 @@ export function createFragmentQuiz({ words, blankIndices }) {
     return maskWord(words[i].text, hints.get(i) ?? 0);
   }
 
+  /** Ends the fragment (timeout): reveals the rest, but never as "typed". */
   function revealAll() {
     for (const i of blankIndices) filled.add(i);
   }
@@ -246,7 +258,10 @@ export function createFragmentQuiz({ words, blankIndices }) {
     revealAll,
     isComplete,
     isFilled: (i) => filled.has(i),
-    foundCount: () => filled.size,
+    isTyped: (i) => typed.has(i),
+    // "found" = typed by the player (see the `typed` set above) — a
+    // hint-completed blank is not "found", it's missed.
+    foundCount: () => typed.size,
     totalBlanks: () => blankIndices.length,
     hintCalls: () => hintCalls,
   };
@@ -288,13 +303,23 @@ export function findFragmentTiming(fragmentLines, syncedLines, { capMs = LISTEN_
 
 /**
  * Points for one finished fragment.
- * - `POINTS_PER_WORD` per blank found, regardless of how the fragment ended.
- * - A time bonus (up to `TIME_BONUS_MAX`) only when every blank was found,
- *   scaled by the fraction of the timer left.
+ * @param {number} foundCount  MUST be the count of blanks the player actually
+ *   TYPED (`quiz.foundCount()` from createFragmentQuiz, which already only
+ *   counts `typed`, never a hint-completed blank) — passing the count of
+ *   every filled blank (typed + hint-completed) would let a fragment solved
+ *   entirely through hints score as "completed" and feed the run's streak,
+ *   which is exactly the bug this split fixed.
+ * - `POINTS_PER_WORD` per blank TYPED; a blank a hint finished scores 0, same
+ *   as one nobody ever touched.
+ * - `completed` = every blank was typed by the player — this is what the
+ *   run's streak advances on (see lyrics-game.js's finishFragment).
+ * - A time bonus (up to `TIME_BONUS_MAX`) only when `completed`, scaled by
+ *   the fraction of the timer left.
  * - Help costs (`HINT_COST` per Pista use, `LISTEN_COST` per listen use) are
  *   subtracted; the fragment's own score never goes below 0.
- * - "Perfect" = every blank found with zero help; earns `PERFECT_BONUS` on
- *   top and is the run's "stamp" moment.
+ * - "Perfect" = `completed` with zero help calls at all (even a hint that
+ *   only nudged a letter without finishing the word costs a use and breaks
+ *   perfect); earns `PERFECT_BONUS` on top and is the run's "stamp" moment.
  * @returns {{points:number, completed:boolean, perfect:boolean}}
  */
 export function scoreFragment({

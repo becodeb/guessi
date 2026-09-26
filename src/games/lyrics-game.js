@@ -8,11 +8,21 @@ import * as ui from "../ui.js";
 import * as scores from "../scores.js";
 import { getLyrics } from "../lyrics.js";
 import { searchSuggestions, artistNames } from "../clip-guess.js";
+import { maskWord } from "../lyrics-engine.js";
 import {
   SONGS_PER_RUN, FRAGMENT_TIMER_MS, LISTEN_CAP_MS, MAX_LISTENS_PER_FRAGMENT,
   HINT_COST, LISTEN_COST,
   buildFragment, createFragmentQuiz, findFragmentTiming, scoreFragment,
 } from "../lyrics-quiz.js";
+
+// An invented teaser line (never real lyrics — same rule as every fixture in
+// this repo) shown on the start screen with a few words masked, just to show
+// what a fragment looks like before the player commits to a run.
+const TEASER_WORDS = [
+  { text: "Una", blank: false }, { text: "historia", blank: true }, { text: "que", blank: false },
+  { text: "solo", blank: false }, { text: "tú", blank: false }, { text: "puedes", blank: false },
+  { text: "terminar", blank: true }, { text: "de", blank: false }, { text: "cantar", blank: true },
+];
 
 const GAME_ID = "letra";
 const RESULT_DELAY_MS = 700;
@@ -83,24 +93,58 @@ function announce(msg) {
 
 // --- start screen --------------------------------------------------------------
 
+function teaserLine() {
+  const line = ui.el("p", { class: "lyrics-quiz__teaser" });
+  TEASER_WORDS.forEach((w, i) => {
+    if (i > 0) line.append(" ");
+    line.append(w.blank
+      ? ui.el("span", { class: "lyrics-quiz__blank", text: maskWord(w.text, 0) })
+      : ui.el("span", { text: w.text }));
+  });
+  return line;
+}
+
+function choiceCard({ modifier, icon, title, desc, onClick }) {
+  return ui.el("button", {
+    class: `lyrics-quiz__choice${modifier ? ` lyrics-quiz__choice--${modifier}` : ""}`,
+    type: "button",
+    on: { click: onClick },
+  },
+    ui.icon(icon),
+    ui.el("span", { class: "lyrics-quiz__choice-title", text: title }),
+    ui.el("span", { class: "lyrics-quiz__choice-desc", text: desc }),
+  );
+}
+
 function renderStart() {
-  const startBtn = ui.el("button", {
-    class: "btn btn--primary btn--lg",
-    type: "button",
-    text: "Al azar",
-    on: { click: () => startRun("random") },
-  });
-  const pickBtn = ui.el("button", {
-    class: "btn btn--ghost btn--lg",
-    type: "button",
-    text: "Elijo yo",
-    on: { click: () => startRun("pick") },
-  });
+  const rules = ui.el("div", { class: "row row--wrap lyrics-quiz__rules" },
+    ui.el("span", { class: "chip chip--muted", text: "5 canciones" }),
+    ui.el("span", { class: "chip chip--muted", text: "45 s por fragmento" }),
+    ui.el("span", { class: "chip chip--muted", text: "Pistas y audio cuestan puntos" }),
+  );
+
+  const choices = ui.el("div", { class: "lyrics-quiz__choices" },
+    choiceCard({
+      modifier: "primary",
+      icon: "note",
+      title: "Al azar",
+      desc: "5 canciones sorpresa de «Lo que sé».",
+      onClick: () => startRun("random"),
+    }),
+    choiceCard({
+      icon: "search",
+      title: "Elijo yo",
+      desc: "Vos eliges cada canción, con un escape a una sorpresa cuando quieras.",
+      onClick: () => startRun("pick"),
+    }),
+  );
 
   handle.panels.replaceChildren(
     ui.el("div", { class: "card lyrics-quiz__start" },
-      ui.el("p", { class: "lyrics-quiz__start-copy", text: "Cinco fragmentos, tú eliges cómo llegan: al azar o canción por canción." }),
-      ui.el("div", { class: "row row--wrap" }, startBtn, pickBtn),
+      ui.el("p", { class: "small dim lyrics-quiz__teaser-label", text: "Así se ve un fragmento" }),
+      teaserLine(),
+      rules,
+      choices,
     ),
   );
 }
@@ -267,6 +311,28 @@ function songHeader(track) {
   );
 }
 
+/**
+ * Render tokenized lyric lines as normal flowing text (a single space text
+ * node between tokens) instead of a flex row with a fixed `gap` — a `gap`
+ * between every token reads as one wide, evenly-spaced gap per word (it does
+ * not collapse to a normal single-space width), which is fine for
+ * round-game.js's per-word buttons but not for plain reading text here.
+ * `renderToken(tok)` returns the element for one word/punctuation token.
+ */
+function buildLinesHost(lines, renderToken) {
+  const host = ui.el("div", { class: "lyrics-quiz__lines" });
+  for (const lineTokens of lines) {
+    if (lineTokens.length === 0) { host.append(ui.el("span", { class: "lyrics-quiz__gap", "aria-hidden": "true" })); continue; }
+    const lineEl = ui.el("p", { class: "lyrics-quiz__line" });
+    lineTokens.forEach((tok, i) => {
+      if (i > 0) lineEl.append(" ");
+      lineEl.append(renderToken(tok));
+    });
+    host.append(lineEl);
+  }
+  return host;
+}
+
 // --- fragment gameplay -------------------------------------------------------------
 
 function startFragment(track, fragment, syncedLines) {
@@ -292,26 +358,16 @@ function renderFragment() {
 
   const progress = ui.el("span", { class: "chip chip--muted", text: `Canción ${handle.run.songNumber} de ${SONGS_PER_RUN}` });
 
-  const linesHost = ui.el("div", { class: "lyrics-quiz__lines" });
   handle.round.blankEls.clear();
-  for (const lineTokens of fragment.lines) {
-    if (lineTokens.length === 0) { linesHost.append(ui.el("span", { class: "lyrics-quiz__gap", "aria-hidden": "true" })); continue; }
-    const lineEl = ui.el("div", { class: "lyrics-quiz__line" });
-    for (const tok of lineTokens) {
-      if (!tok.isWord) {
-        lineEl.append(ui.el("span", { class: "lyrics-quiz__punct", text: tok.text }));
-        continue;
-      }
-      if (quiz.isBlank(tok.wordIndex)) {
-        const span = ui.el("span", { class: "lyrics-quiz__blank", text: quiz.maskFor(tok.wordIndex) });
-        handle.round.blankEls.set(tok.wordIndex, span);
-        lineEl.append(span);
-      } else {
-        lineEl.append(ui.el("span", { class: "lyrics-quiz__word", text: tok.text }));
-      }
+  const linesHost = buildLinesHost(fragment.lines, (tok) => {
+    if (!tok.isWord) return ui.el("span", { class: "lyrics-quiz__punct", text: tok.text });
+    if (quiz.isBlank(tok.wordIndex)) {
+      const span = ui.el("span", { class: "lyrics-quiz__blank", text: quiz.maskFor(tok.wordIndex) });
+      handle.round.blankEls.set(tok.wordIndex, span);
+      return span;
     }
-    linesHost.append(lineEl);
-  }
+    return ui.el("span", { class: "lyrics-quiz__word", text: tok.text });
+  });
 
   const input = ui.el("input", {
     class: "input lyrics-quiz__input",
@@ -514,9 +570,15 @@ function finishFragment(reason) {
     points: handle.run.points,
     best: Math.max(record.bestStreak, handle.run.streak),
   });
-  announce(summary.completed
-    ? `¡Fragmento completo! Más ${summary.points} puntos.`
-    : `Se acabó el tiempo. Encontraste ${round.quiz.foundCount()} de ${round.quiz.totalBlanks()} palabras.`);
+  if (summary.completed) {
+    announce(`¡Fragmento completo! Más ${summary.points} puntos.`);
+  } else if (reason === "timeout") {
+    announce(`Se acabó el tiempo. Escribiste ${round.quiz.foundCount()} de ${round.quiz.totalBlanks()} palabras.`);
+  } else {
+    // Every blank got resolved, but not all of them by typing (some were
+    // finished by a Pista) — not a timeout, but not a full find either.
+    announce(`Fragmento resuelto con ayuda. Escribiste ${round.quiz.foundCount()} de ${round.quiz.totalBlanks()} palabras.`);
+  }
 
   const id = setTimeout(() => showReveal(summary), RESULT_DELAY_MS);
   handle.timers.push(id);
@@ -525,26 +587,33 @@ function finishFragment(reason) {
 function showReveal(summary) {
   const round = handle.round;
   const { fragment, quiz, track } = round;
+  const album = track.album;
 
-  // Snapshot before revealAll() erases the found/missed distinction.
-  const wasFound = new Set(fragment.blankIndices.filter((i) => quiz.isFilled(i)));
+  // Snapshot BEFORE revealAll() — isTyped() is the "found" the parent asked
+  // for (a hint-completed blank must read as missed, not found, same rule
+  // scoreFragment/the streak use — see createFragmentQuiz).
+  const wasTyped = new Set(fragment.blankIndices.filter((i) => quiz.isTyped(i)));
   quiz.revealAll();
 
-  const linesHost = ui.el("div", { class: "lyrics-quiz__lines" });
-  for (const lineTokens of fragment.lines) {
-    if (lineTokens.length === 0) { linesHost.append(ui.el("span", { class: "lyrics-quiz__gap", "aria-hidden": "true" })); continue; }
-    const lineEl = ui.el("div", { class: "lyrics-quiz__line" });
-    for (const tok of lineTokens) {
-      if (!tok.isWord) { lineEl.append(ui.el("span", { class: "lyrics-quiz__punct", text: tok.text })); continue; }
-      const isBlank = quiz.isBlank(tok.wordIndex);
-      const missed = isBlank && !wasFound.has(tok.wordIndex);
-      lineEl.append(ui.el("span", {
-        class: `lyrics-quiz__word${missed ? " lyrics-quiz__word--missed" : ""}`,
-        text: tok.text,
-      }));
-    }
-    linesHost.append(lineEl);
-  }
+  const linesHost = buildLinesHost(fragment.lines, (tok) => {
+    if (!tok.isWord) return ui.el("span", { class: "lyrics-quiz__punct", text: tok.text });
+    const missed = quiz.isBlank(tok.wordIndex) && !wasTyped.has(tok.wordIndex);
+    return ui.el("span", {
+      class: `lyrics-quiz__word${missed ? " lyrics-quiz__word--missed" : ""}`,
+      text: tok.text,
+    });
+  });
+
+  // Same reveal-poster component clip-game's win/loss screens use, in this
+  // game's own paper color — the "poster moment" the parent asked for,
+  // instead of a plain card with body text.
+  const poster = ui.revealPoster({
+    paper: "white",
+    title: track.name,
+    lines: [artistNames(track).join(", "), [album?.name, yearOf(album)].filter(Boolean).join(" · ")],
+    coverUrl: album?.images?.[0]?.url,
+    stamp: summary.perfect ? "¡Perfecto!" : `+${summary.points}`,
+  });
 
   const isLast = handle.run.songNumber >= SONGS_PER_RUN;
   const nextBtn = ui.el("button", {
@@ -555,17 +624,17 @@ function showReveal(summary) {
   });
 
   handle.panels.replaceChildren(
-    ui.el("div", { class: "card lyrics-quiz__reveal" },
-      songHeader(track),
+    ui.el("div", { class: "lyrics-quiz__reveal" },
+      poster,
       linesHost,
-      ui.el("p", { class: "lyrics-quiz__reveal-points" },
-        summary.perfect ? ui.el("span", { class: "chip chip--solved", text: "¡Perfecto!" }) : null,
-        ` +${summary.points} puntos`,
-      ),
-      nextBtn,
+      ui.el("div", { class: "row" }, nextBtn),
     ),
   );
   nextBtn.focus();
+}
+
+function yearOf(album) {
+  return String(album?.release_date ?? "").slice(0, 4) || "";
 }
 
 // --- results poster -------------------------------------------------------------
@@ -578,10 +647,13 @@ function showResults() {
   handle.run.saved = true;
   handle.hud.update({ streak: handle.run.streak, points: handle.run.points, best: record.bestStreak });
 
+  // Points lead the poster — perfects are a nice secondary line, but a run
+  // with zero perfect fragments still earned real points and shouldn't read
+  // as "0/5 PERFECTOS" (parent review: that buried the actual result).
   const poster = ui.revealPoster({
     paper: "white",
-    title: `${handle.run.perfectCount}/${SONGS_PER_RUN} perfectos`,
-    lines: [`${handle.run.points} puntos en la ronda`, `Récord: ${record.bestPoints} puntos, racha de ${record.bestStreak}`],
+    title: `${handle.run.points} puntos`,
+    lines: [`${handle.run.perfectCount}/${SONGS_PER_RUN} fragmentos perfectos`, `Récord: ${record.bestPoints} puntos, racha de ${record.bestStreak}`],
     stamp: (isNewBestStreak || isNewBestPoints) ? "¡Récord!" : undefined,
   });
 

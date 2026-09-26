@@ -3915,16 +3915,83 @@ button {
 .lyrics-quiz__picker,
 .lyrics-quiz__loading,
 .lyrics-quiz__gate,
-.lyrics-quiz__fragment,
-.lyrics-quiz__reveal {
+.lyrics-quiz__fragment {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
 }
 
-.lyrics-quiz__start-copy {
-  max-width: 52ch;
+/* --------------------------------------------------------------------------
+   Start screen: a poster moment (masked teaser + rules + two big choices),
+   not a plain "here are two buttons" card (parent review, polish round).
+   -------------------------------------------------------------------------- */
+
+.lyrics-quiz__teaser-label {
+  margin: 0;
+}
+
+.lyrics-quiz__teaser {
+  margin: 0;
+  font-family: var(--font-text);
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+
+.lyrics-quiz__rules {
+  margin-top: 4px;
+}
+
+.lyrics-quiz__choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap-lg);
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .lyrics-quiz__choices {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lyrics-quiz__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: var(--gap-xl);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--dur-state) var(--ease-out), border-color var(--dur-state) var(--ease-out);
+}
+
+.lyrics-quiz__choice:hover,
+.lyrics-quiz__choice:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--game, var(--line-strong));
+}
+
+.lyrics-quiz__choice .icon {
+  color: var(--game, var(--chalk));
+}
+
+.lyrics-quiz__choice--primary {
+  background: color-mix(in srgb, var(--game, var(--chalk)) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--game, var(--chalk)) 40%, var(--line));
+}
+
+.lyrics-quiz__choice-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.5rem;
+}
+
+.lyrics-quiz__choice-desc {
   color: var(--text-dim);
+  font-size: 0.9rem;
 }
 
 .lyrics-quiz__gate {
@@ -3974,11 +4041,13 @@ button {
   border-radius: var(--radius-card);
 }
 
+/* Plain flowing text (a normal space between spans, added in JS) — NOT a
+   flex row with a `gap`: a flex `gap` between every token reads as one
+   fixed, oversized gap per word instead of a normal space's width (that is
+   what round-game.js's `.lyrics__line` wants, since every word there is its
+   own clickable button; here the words are just text). */
 .lyrics-quiz__line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  align-items: baseline;
+  margin: 0;
   line-height: 1.85;
   font-family: var(--font-text);
   font-size: 1.05rem;
@@ -4008,19 +4077,24 @@ button {
   letter-spacing: 0.08em;
 }
 
-/* Filled by the player (typing or a full hint) — reads as solved, like the
-   round game's known-word state. */
+/* Live play only: filled by typing OR a full hint — both read as "resolved"
+   in the moment (immediate feedback that the blank is gone), like the round
+   game's known-word state. The reveal screen (below) draws the real,
+   scoring-accurate line between the two: only a typed word is "found". */
 .lyrics-quiz__blank--found {
   background: color-mix(in srgb, var(--ok) 16%, transparent);
   color: var(--ok);
 }
 
-/* Reveal screen only: a blank the player never found. */
+/* Reveal screen only: a blank the player didn't type themselves — whether a
+   Pista finished it or it was never touched, it counts as missed (same rule
+   scoreFragment and the run streak use), struck through so it reads as
+   "wrong"/"not yours" rather than merely "different". */
 .lyrics-quiz__word--missed {
   color: var(--bad);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--bad) 50%, transparent);
-  text-underline-offset: 3px;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--bad) 60%, transparent);
+  text-decoration-thickness: 2px;
 }
 
 .lyrics-quiz__input {
@@ -4061,11 +4135,18 @@ button {
   margin: 0;
 }
 
-.lyrics-quiz__reveal-points {
+/* Between-song reveal: the same reveal-poster component clip-game uses,
+   plus the fragment text (found words normal, missed struck through) below
+   it — a poster moment with the score breakdown still visible underneath. */
+.lyrics-quiz__reveal {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  align-items: flex-start;
+}
+
+.lyrics-quiz__reveal .lyrics-quiz__lines {
+  width: 100%;
 }
 
 .lyrics-quiz__result {

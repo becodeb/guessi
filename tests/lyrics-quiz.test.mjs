@@ -181,6 +181,8 @@ check("buildFragment: fragment too short to hide ≥3 words → null", buildFrag
   const r1 = quiz.tryWord(firstBlankWord.text);
   checkTrue("createFragmentQuiz: exact word fills its blank", r1.ok);
   check("createFragmentQuiz: fills the right index", r1.index, built.blankIndices[0]);
+  checkTrue("createFragmentQuiz: a typed blank is marked typed", quiz.isTyped(built.blankIndices[0]));
+  check("createFragmentQuiz: foundCount only counts typed blanks", quiz.foundCount(), 1);
 
   const upper = firstBlankWord.text.toUpperCase();
   const r1b = quiz.tryWord(upper); // already filled → no longer matches
@@ -200,6 +202,8 @@ check("buildFragment: fragment too short to hide ≥3 words → null", buildFrag
 }
 
 {
+  // Rule change (parent review): a blank a hint fully reveals counts as
+  // MISSED, not found — it must never feed points or the run's streak.
   const built = buildFragment(SONG, { rng: () => 0 });
   const quiz = createFragmentQuiz(built);
   let calls = 0;
@@ -211,6 +215,30 @@ check("buildFragment: fragment too short to hide ≥3 words → null", buildFrag
   checkTrue("createFragmentQuiz: hint() alone can complete a fragment", quiz.isComplete());
   checkTrue("createFragmentQuiz: hintCalls() counts every use", quiz.hintCalls() > 0);
   checkTrue("createFragmentQuiz: final hint reports done", lastResult.done);
+  check("createFragmentQuiz: a fragment finished purely via hints has foundCount 0", quiz.foundCount(), 0);
+  for (const i of built.blankIndices) {
+    checkTrue(`createFragmentQuiz: hint-completed blank ${i} is filled...`, quiz.isFilled(i));
+    checkTrue(`createFragmentQuiz: ...but NOT typed`, !quiz.isTyped(i));
+  }
+}
+
+{
+  // A partial hint (doesn't finish the word) never blocks the player from
+  // still typing it — and typing it still counts as found.
+  const built = buildFragment(SONG, { rng: () => 0 });
+  const quiz = createFragmentQuiz(built);
+  const i = built.blankIndices[0];
+  const word = built.words[i].text;
+  if ([...word].filter((c) => /[\p{L}\p{N}]/u.test(c)).length > 1) {
+    const h = quiz.hint(); // reveals only the first letter — word not yet complete
+    checkTrue("partial hint: does not complete the word", !h.filled);
+    checkTrue("partial hint: blank is still not filled", !quiz.isFilled(i));
+    const r = quiz.tryWord(word);
+    checkTrue("partial hint: the player can still type the full word", r.ok);
+    checkTrue("partial hint: a word typed after a partial hint counts as typed", quiz.isTyped(i));
+    check("partial hint: foundCount counts it", quiz.foundCount(), 1);
+    checkTrue("partial hint: hintCalls still recorded the cost", quiz.hintCalls() > 0);
+  }
 }
 
 {
@@ -219,6 +247,7 @@ check("buildFragment: fragment too short to hide ≥3 words → null", buildFrag
   quiz.revealAll();
   checkTrue("createFragmentQuiz: revealAll completes it", quiz.isComplete());
   check("createFragmentQuiz: revealAll costs no hint calls", quiz.hintCalls(), 0);
+  check("createFragmentQuiz: revealAll never counts as typed/found", quiz.foundCount(), 0);
 }
 
 {
@@ -263,6 +292,18 @@ check("findFragmentTiming: no match found → null", findFragmentTiming(["nunca 
 }
 
 // --- scoreFragment ---------------------------------------------------------------
+// `foundCount` here must be quiz.foundCount() semantics: TYPED blanks only,
+// never every filled blank — see createFragmentQuiz's tests above for why
+// (a hint-completed blank is "filled" but never "typed"/"found").
+
+{
+  // The bug this whole rule change fixes: a fragment finished entirely
+  // through hints must score 0 and never read as "completed" for the streak.
+  const s = scoreFragment({ totalBlanks: 4, foundCount: 0, hintCalls: 12, listenCalls: 0, remainingMs: 40000, timerMs: FRAGMENT_TIMER_MS });
+  check("scoreFragment: an all-hints fragment scores 0 points", s.points, 0);
+  checkTrue("scoreFragment: an all-hints fragment is NOT completed (no streak credit)", !s.completed);
+  checkTrue("scoreFragment: an all-hints fragment is not perfect", !s.perfect);
+}
 
 {
   const s = scoreFragment({ totalBlanks: 5, foundCount: 5, hintCalls: 0, listenCalls: 0, remainingMs: FRAGMENT_TIMER_MS, timerMs: FRAGMENT_TIMER_MS });

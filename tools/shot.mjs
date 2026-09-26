@@ -141,7 +141,7 @@ function pickSuggestion(query, { index = 0 } = {}) {
 // — every time this script runs.
 function startRandomRun() {
   return async (page) => {
-    await page.locator(".lyrics-quiz__start button", { hasText: "Al azar" }).click();
+    await page.locator(".lyrics-quiz__choice--primary").click();
     await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
   };
 }
@@ -171,9 +171,28 @@ function completeFragmentViaHints() {
   };
 }
 
+// Types a few of the placeholder lyrics' own words (harness-app.html's fixed
+// PLACEHOLDER_LYRICS, never real lyrics) into the fragment input, then spams
+// Pista for whatever is left. Whichever of these happen to be blanks get
+// filled by typing — "found" on the reveal screen; Pista finishes the rest —
+// "missed" on the reveal screen, per the found/missed rule change. This
+// avoids predicting which words rng picked as blanks: it just tries a
+// deliberately-incomplete sample of real fixture words and lets the app's
+// own matching sort out which ones landed.
+function typeSomeKnownWords() {
+  return async (page) => {
+    const input = page.locator(".lyrics-quiz__fragment .lyrics-quiz__input").first();
+    for (const word of ["verso", "prueba", "harness", "otra", "cantar"]) {
+      if (await input.isDisabled().catch(() => true)) break;
+      await input.fill(word).catch(() => {});
+      await page.waitForTimeout(20);
+    }
+  };
+}
+
 function playFullLyricsRun() {
   return async (page) => {
-    await page.locator(".lyrics-quiz__start button", { hasText: "Al azar" }).click();
+    await page.locator(".lyrics-quiz__choice--primary").click();
     for (let song = 0; song < 5; song++) {
       await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
       await completeFragmentViaHints()(page);
@@ -235,6 +254,17 @@ const TARGETS = [
   { name: "letra-reveal", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
     stubRandom: true,
     interaction: async (page) => { await startRandomRun()(page); await completeFragmentViaHints()(page); },
+    settleWait: ".lyrics-quiz__reveal" },
+  // Same fragment, but with some blanks typed by "the player" first — shows
+  // the found (typed, normal text) vs missed (hint-finished, struck-through)
+  // contrast the reveal screen draws (parent review: this needs to be visible).
+  { name: "letra-reveal-typed", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+    stubRandom: true,
+    interaction: async (page) => {
+      await startRandomRun()(page);
+      await typeSomeKnownWords()(page);
+      await completeFragmentViaHints()(page);
+    },
     settleWait: ".lyrics-quiz__reveal" },
   { name: "letra-results", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
     stubRandom: true, interaction: playFullLyricsRun(), settleWait: ".lyrics-quiz__result" },
@@ -326,17 +356,22 @@ async function captureInContext(context, target, viewport, outDir, consoleLog, p
 
   // An interaction can reveal new images after the page's own initial
   // networkidle wait already passed (e.g. clip-game.js's reveal poster cover,
-  // only created once a guess resolves) — wait for the network again, then
-  // for that exact <img> to finish loading, so it never gets captured blank.
+  // only created once a guess resolves — and lyrics-game.js's own
+  // `.lyrics-quiz__cover` song header, present on every fragment/loading/
+  // reveal state reached through an interaction) — wait for the network
+  // again, then for every such <img> to finish loading, so none of them get
+  // captured mid-load (this used to check only `.reveal-poster__cover`,
+  // which is why letra-mid's cover was blank: that target's cover is
+  // `.lyrics-quiz__cover`, a selector this wait never looked for).
   if (target.interaction) {
     await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {
       consoleLog.push({ page: pageLabel, kind: "harness-warn", text: "post-interaction networkidle timed out" });
     });
     await page.waitForFunction(() => {
-      const img = document.querySelector(".reveal-poster__cover");
-      return !img || img.complete;
+      const imgs = document.querySelectorAll(".reveal-poster__cover, .lyrics-quiz__cover");
+      return [...imgs].every((img) => img.complete);
     }, { timeout: 4000 }).catch(() => {
-      consoleLog.push({ page: pageLabel, kind: "harness-warn", text: "reveal-poster cover never finished loading" });
+      consoleLog.push({ page: pageLabel, kind: "harness-warn", text: "a reveal cover never finished loading" });
     });
   }
 
