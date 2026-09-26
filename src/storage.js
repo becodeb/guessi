@@ -11,6 +11,7 @@ const KEYS = {
   library: `${PREFIX}library`,
   lyrics: `${PREFIX}lyrics`,
   manualLyrics: `${PREFIX}manualLyrics`,
+  lyricsGameMode: `${PREFIX}lyricsGameMode`,
 };
 
 // v1 nested a full album copy (covers included) inside every track and kept
@@ -214,4 +215,16 @@ export function loadManualLyrics() {
 
 export function saveManualLyrics(map) {
   write(KEYS.manualLyrics, map);
+}
+
+// --- lyrics game mode preference (task T4 — pure convenience, never blocks) --
+
+/** Last chosen "Completa la letra" mode ("timed" | "full"), or null. */
+export function loadLyricsGameMode() {
+  const v = read(KEYS.lyricsGameMode, null);
+  return v === "timed" || v === "full" ? v : null;
+}
+
+export function saveLyricsGameMode(mode) {
+  write(KEYS.lyricsGameMode, mode);
 }
