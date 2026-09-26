@@ -47,16 +47,25 @@ contrast. New pure logic gets a `tests/*.test.mjs` harness.
 
 Route legend: inline = parent edits directly; delegated = one bounded writer.
 
-- [ ] T1 Remove the start-offset skip from the clip player kit and the round
+- [x] T1 Remove the start-offset skip from the clip player kit and the round
   (`OFFSET_STEPS_MS` ladder and its tests go too; the round keeps `fromMs`
   for the tracklist tails). Route: delegated (writer trigger: clip-player,
   round-game, clip-steps, tests, styles). Check: `npm test`, harness shots of
   `clip` and `ronda`.
-- [ ] T2 Random start point per song in "La primera décima": pure
+  Evidence: `npm test` 9/9 green (parent re-run); `rg` finds no offset-ladder
+  remnants; shots in `/tmp/guessi-shots/t2-final-ronda/` reviewed by the
+  parent (round clip card keeps Reproducir / +0,1 s / Reiniciar only).
+- [x] T2 Random start point per song in "La primera décima": pure
   `pickClipStart(durationMs, rng)` (50 % start at 0, else a random point that
   leaves room for the longest clip and the "listen more" tail), decided once
   when the song is drawn, used by every step and by "Escuchar más".
   Route: delegated (same writer as T1). Check: unit tests, `npm test`, shots.
+  Evidence: rule = 0 when `rng() < 0.5`, else uniform in
+  `[min(10 % of duration, 15 s), duration − max(longest clip, 15 s)]`, 0 when
+  that window does not fit; 30 assertions in `tests/clip-steps.test.mjs`
+  incl. a seeded ~50 % check over 4000 draws. A chip says «Desde el
+  principio» / «Desde algún momento de la canción» (never a timestamp).
+  Shots in `/tmp/guessi-shots/t2-final/` reviewed by the parent.
 - [ ] T3 New lyrics game: start screen (random vs pick a song from «Lo que
   sé»), one short lyric fragment with a few blanks per song, timer, hint and
   "listen to the fragment" help that cost points, run of 5 songs with a
@@ -86,7 +95,10 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 
 | Task | Commit | Notes |
 |---|---|---|
+| plan | `fbd52c7` | this document |
+| T1 | `3062078` | RDD off; writer self-verification + parent spot check |
+| T2 | `b4e6025` | RDD off; writer self-verification + parent spot check |
 
 ## Next step
 
-T1 + T2 with one writer, then T3.
+T3 (lyrics game) with one writer.
