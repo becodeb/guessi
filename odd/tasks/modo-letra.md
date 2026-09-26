@@ -85,7 +85,7 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   Pending: the login collage still shows 4 games; real-device test with
   sound (the harness has no audio).
 
-- [ ] T4 "Canción entera" mode inside «Completa la letra» (user, 2026-09-26:
+- [x] T4 "Canción entera" mode inside «Completa la letra» (user, 2026-09-26:
   the whole song's lyrics, no time limit, more relaxed). Start screen picks
   the mode (timed fragments vs whole song) and then the source (random vs
   pick). Whole song: every word masked, stanzas preserved; typing a word
@@ -96,6 +96,12 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
   without changing its rules. Route: delegated (same writer as T3).
   Check: unit tests for any new pure logic, `npm test`, harness shots
   desktop + mobile incl. a long song.
+  Evidence: `src/lyrics-fullsong.js` + tests; a typed word drains
+  `revealAnywhere` (engine untouched); «Revelar línea» reveals by line index
+  (repeated lines would otherwise hit the wrong occurrence); last mode is
+  remembered. Writer fixed toasts landing on the sticky bar. `npm test`
+  12/12 green (parent re-run); shots `/tmp/guessi-shots/t4-final/` reviewed
+  by the parent; parent removed the timed-only rule chips from the mode step.
 
 ## Acceptance criteria
 
@@ -123,8 +129,9 @@ Route legend: inline = parent edits directly; delegated = one bounded writer.
 | T1 | `3062078` | RDD off; writer self-verification + parent spot check |
 | T2 | `b4e6025` | RDD off; writer self-verification + parent spot check |
 | T3 | `ecde786`, `4e28eaa`, `48c9a0c`, `d7964ae` | RDD off; logic, UI, polish round, copy fix |
+| T4 | `f6aa46c`, `26fac6a`, + parent fix | RDD off; logic, UI, mode-step chips |
 
 ## Next step
 
-T4 (whole-song mode). Then: 
-User test on the LAN harness (`http://192.168.1.37:8093/harness-app.html?demo=1#/juegos/letra`, snapshot of `d7964ae` in `/tmp/guessi-preview`), then merge to `main` and push when the user says so.
+
+User test on the LAN harness (`http://192.168.1.37:8093/harness-app.html?demo=1#/juegos/letra`, snapshot of the branch head in `/tmp/guessi-preview`), then merge to `main` and push when the user says so.
