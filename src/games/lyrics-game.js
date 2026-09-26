@@ -141,12 +141,6 @@ const LYRICS_MODES = {
  * offers a one-tap way back here, so remembering never removes the choice.
  */
 function renderModeStep() {
-  const rules = ui.el("div", { class: "row row--wrap lyrics-quiz__rules" },
-    ui.el("span", { class: "chip chip--muted", text: "5 canciones" }),
-    ui.el("span", { class: "chip chip--muted", text: "45 s por fragmento" }),
-    ui.el("span", { class: "chip chip--muted", text: "Pistas y audio cuestan puntos" }),
-  );
-
   const choices = ui.el("div", { class: "lyrics-quiz__choices" },
     choiceCard({
       modifier: "primary",
@@ -167,7 +161,6 @@ function renderModeStep() {
     ui.el("div", { class: "card lyrics-quiz__start" },
       ui.el("p", { class: "small dim lyrics-quiz__teaser-label", text: "Así se ve un fragmento" }),
       teaserLine(),
-      rules,
       choices,
     ),
   );

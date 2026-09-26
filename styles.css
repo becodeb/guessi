@@ -3927,7 +3927,7 @@ button {
 }
 
 /* --------------------------------------------------------------------------
-   Start screen: a poster moment (masked teaser + rules + two big choices),
+   Start screen: a poster moment (masked teaser + two big choices),
    not a plain "here are two buttons" card (parent review, polish round).
    -------------------------------------------------------------------------- */
 
@@ -3940,10 +3940,6 @@ button {
   font-family: var(--font-text);
   font-size: 1.15rem;
   line-height: 1.7;
-}
-
-.lyrics-quiz__rules {
-  margin-top: 4px;
 }
 
 .lyrics-quiz__choices {
