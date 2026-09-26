@@ -28,36 +28,3 @@ export function growClip(targetMs, stepIndex, maxMs = Infinity) {
     stepIndex: Math.min(stepIndex + 1, CLIP_STEPS_MS.length - 1),
   };
 }
-
-// --- start-offset ladder -----------------------------------------------------
-// Separate dimension from the clip LENGTH above: where the window starts.
-//
-// Why this ladder is coarser than CLIP_STEPS_MS: the clip ladder starts tiny
-// because the first instants of a song are the most informative, so every
-// 0,1 s is worth its own tap. The offset's job is the opposite — it exists to
-// skip dead air before the first note, and there is nothing to learn inside
-// silence, so its first tap already moves half a second and it reaches 4 s in
-// four taps.
-
-/** Start-offset ladder: 0,5 → 1 → 2 → 4 s (then 4 s forever). */
-export const OFFSET_STEPS_MS = [500, 1000, 2000, 4000];
-
-/** Jump a tap would add at `stepIndex` (clamped into the ladder). */
-export function offsetIncrement(stepIndex) {
-  const i = Math.min(Math.max(stepIndex, 0), OFFSET_STEPS_MS.length - 1);
-  return OFFSET_STEPS_MS[i];
-}
-
-/**
- * Apply one tap on the start offset: same shape as growClip. The offset never
- * passes `maxMs` (callers pass the room left before the track ends, i.e.
- * duration − clip length); non-finite or ≤0 values mean "no cap".
- * @returns {{ fromMs:number, stepIndex:number }}
- */
-export function growOffset(fromMs, stepIndex, maxMs = Infinity) {
-  const cap = Number.isFinite(maxMs) && maxMs > 0 ? maxMs : Infinity;
-  return {
-    fromMs: Math.min(fromMs + offsetIncrement(stepIndex), cap),
-    stepIndex: Math.min(stepIndex + 1, OFFSET_STEPS_MS.length - 1),
-  };
-}

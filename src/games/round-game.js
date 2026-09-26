@@ -10,10 +10,7 @@
 import * as ui from "../ui.js";
 import * as match from "../match.js";
 import { createAutoGuess } from "../guess-auto.js";
-import {
-  CLIP_STEPS_MS, clipIncrement, growClip,
-  OFFSET_STEPS_MS, offsetIncrement, growOffset,
-} from "../clip-steps.js";
+import { CLIP_STEPS_MS, clipIncrement, growClip } from "../clip-steps.js";
 import { isStaleCover } from "../storage.js";
 import { createLyricsGame, tokenize, maskWord } from "../lyrics-engine.js";
 import { getLyrics, saveManualLyrics } from "../lyrics.js";
@@ -513,10 +510,6 @@ function renderAudioBar(track) {
     primed: false,
     stepIndex: 0,
     targetMs: CLIP_STEPS_MS[0],
-    // Where the clip starts. Independent ladder: a silent intro is a "move the
-    // window", not a "make the window longer" problem.
-    fromMs: 0,
-    offsetStep: 0,
     priming: null,
     maxMs: Number.isFinite(duration) && duration > 0 ? duration : Infinity,
   };
@@ -529,38 +522,26 @@ function renderAudioBar(track) {
 // +0,1s doubles the jump on every tap (CLIP_STEPS_MS) and the label always
 // announces the next tap's jump, so the clip can be stretched coarsely once the
 // first seconds are not enough. Reproducir toggles into Detener while it plays.
-//
-// Two separate dimensions, two separate ladders: «+» makes the window LONGER,
-// «Saltar» moves WHERE it starts. Conflating them meant a silent intro could
-// only be escaped by stretching the clip until it was coarse and useless.
 function clipBlock(track, st) {
   const { ctx } = handle;
   const fill = ui.el("div", { class: "clip__fill" });
   const bar = ui.el("div", { class: "clip__bar", "aria-hidden": "true" }, fill);
   const label = ui.el("span", { class: "clip__label display--num", text: ui.formatMs(st.targetMs) });
-  const fromLabel = ui.el("span", { class: "clip-card__from", hidden: true });
 
   const stopPlayback = () => {
     if (st.playing) ctx.player.stop();
   };
 
-  // Room the window has left before the track ends. The clip may grow up to
-  // `maxMs − fromMs`, and the start may move up to `maxMs − targetMs`.
-  const clipCap = () => (Number.isFinite(st.maxMs) ? Math.max(0, st.maxMs - st.fromMs) : Infinity);
-  const offsetCap = () => (Number.isFinite(st.maxMs) ? Math.max(0, st.maxMs - st.targetMs) : Infinity);
+  // Room the window has left before the track ends: the clip may grow up to
+  // the full track duration.
+  const clipCap = () => (Number.isFinite(st.maxMs) ? st.maxMs : Infinity);
 
   const syncClip = () => {
     label.textContent = ui.formatMs(st.targetMs);
-    fromLabel.hidden = st.fromMs <= 0;
-    if (st.fromMs > 0) fromLabel.textContent = `desde ${ui.formatMs(st.fromMs)}`;
     // The button always announces the NEXT tap's jump (the doubling ladder).
     addBtn.textContent = `+${ui.formatMs(clipIncrement(st.stepIndex))}`;
-    addBtn.disabled = st.fromMs + st.targetMs >= st.maxMs;
-    // Same convention for the start: the label is the next tap's jump.
-    skipBtn.textContent = `Saltar +${ui.formatMs(offsetIncrement(st.offsetStep))}`;
-    skipBtn.disabled = st.fromMs >= offsetCap();
-    resetBtn.disabled =
-      st.stepIndex === 0 && st.targetMs === CLIP_STEPS_MS[0] && st.offsetStep === 0 && st.fromMs === 0;
+    addBtn.disabled = st.targetMs >= st.maxMs;
+    resetBtn.disabled = st.stepIndex === 0 && st.targetMs === CLIP_STEPS_MS[0];
   };
 
   const playBtn = ui.el("button", {
@@ -588,7 +569,6 @@ function clipBlock(track, st) {
         fill.style.transition = `width ${st.targetMs}ms linear`;
         fill.style.width = "100%";
         ctx.player.playClip(st.targetMs, {
-          fromMs: st.fromMs,
           onEnd: () => {
             st.playing = false;
             playBtn.textContent = "Reproducir";
@@ -616,42 +596,23 @@ function clipBlock(track, st) {
     },
   });
 
-  const skipBtn = ui.el("button", {
-    class: "btn btn--ghost",
-    text: `Saltar +${ui.formatMs(OFFSET_STEPS_MS[0])}`,
-    title: "Correr el arranque del clip",
-    "aria-label": "Saltar el inicio de la canción",
-    on: {
-      click: () => {
-        stopPlayback();
-        const next = growOffset(st.fromMs, st.offsetStep, offsetCap());
-        st.fromMs = next.fromMs;
-        st.offsetStep = next.stepIndex;
-        syncClip();
-        announce(`Clip de ${ui.formatMs(st.targetMs)} desde ${ui.formatMs(st.fromMs)}`);
-      },
-    },
-  });
-
   const resetBtn = ui.el("button", {
     class: "btn btn--ghost",
     text: "Reiniciar",
-    "aria-label": "Volver el clip a 0,1 s desde el arranque",
+    "aria-label": "Volver el clip a 0,1 s",
     on: {
       click: () => {
         stopPlayback();
         st.stepIndex = 0;
         st.targetMs = CLIP_STEPS_MS[0];
-        st.offsetStep = 0;
-        st.fromMs = 0;
         syncClip();
-        announce("Clip de 0,1 s desde el arranque");
+        announce("Clip de 0,1 s");
       },
     },
   });
   const hint = ui.el("p", {
     class: "clip-card__hint",
-    text: "«+» alarga el clip; «Saltar» corre el arranque para saltear el silencio del principio. Reiniciar vuelve a 0,1 s desde cero.",
+    text: "«+» alarga el clip. Reiniciar vuelve a 0,1 s.",
   });
 
   syncClip();
@@ -663,10 +624,10 @@ function clipBlock(track, st) {
   return ui.el("div", { class: "card clip-card" },
     ui.el("div", { class: "clip-card__head" },
       ui.el("span", { class: "clip-card__caption", text: "Clip" }),
-      ui.el("span", { class: "clip-card__readout" }, fromLabel, label),
+      ui.el("span", { class: "clip-card__readout" }, label),
     ),
     ui.el("div", { class: "clip" }, bar),
-    ui.el("div", { class: "clip__actions" }, playBtn, addBtn, skipBtn, resetBtn),
+    ui.el("div", { class: "clip__actions" }, playBtn, addBtn, resetBtn),
     ui.volumeControl(handle.ctx),
     hint,
   );

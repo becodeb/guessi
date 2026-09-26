@@ -1,12 +1,11 @@
 // Shared clip player for the "Afiche" game kit: a pill progress meter, one
-// Play/Stop button, a start-offset skip and volume, and a Premium gate that
-// reacts live to player status instead of trusting a one-shot isPremium().
+// Play/Stop button and volume, and a Premium gate that reacts live to player
+// status instead of trusting a one-shot isPremium().
 
 import * as ui from "./ui.js";
-import { CLIP_STEPS_MS, OFFSET_STEPS_MS, growOffset } from "./clip-steps.js";
+import { CLIP_STEPS_MS } from "./clip-steps.js";
 
 const MAX_SCALE_MS = CLIP_STEPS_MS[CLIP_STEPS_MS.length - 1];
-const OFFSET_CEILING_MS = OFFSET_STEPS_MS.reduce((sum, ms) => sum + ms, 0);
 
 /**
  * Build a clip player bound to `ctx.player`. Call `setTrack()` before
@@ -16,14 +15,14 @@ const OFFSET_CEILING_MS = OFFSET_STEPS_MS.reduce((sum, ms) => sum + ms, 0);
  *   default premium-gate content (e.g. a game-specific message and link).
  * @returns {{el: HTMLElement, setStep: (i:number)=>void, getStep: ()=>number,
  *   getOffset: ()=>number, stepsCount: number, play: ()=>void, stop: ()=>void,
- *   isPlaying: ()=>boolean, setTrack: (track:object)=>void, destroy: ()=>void}}
+ *   isPlaying: ()=>boolean, setTrack: (track:object, opts?:{fromMs?:number})=>void,
+ *   destroy: ()=>void}}
  */
 export function createClipPlayer(ctx, opts = {}) {
   const st = {
     track: null,
     stepIndex: 0,
     fromMs: 0,
-    offsetIndex: 0,
     playing: false,
     primed: false,
     priming: null,
@@ -49,15 +48,6 @@ export function createClipPlayer(ctx, opts = {}) {
     else play();
   });
 
-  const skipBtn = ui.el("button", {
-    class: "btn btn--ghost btn--sm clip-player__skip",
-    type: "button",
-    text: "Saltar silencio",
-    "aria-label": "Saltar el silencio inicial",
-    on: { click: () => advanceOffset() },
-  });
-  const offsetReadout = ui.el("span", { class: "clip-player__offset small dim", hidden: true });
-
   const volumeHost = ui.volumeControl(ctx);
   volumeHost.classList.add("volume--compact");
   const hint = ui.el("p", { class: "clip-player__hint small dim", hidden: true });
@@ -66,7 +56,7 @@ export function createClipPlayer(ctx, opts = {}) {
   gate.hidden = true;
 
   const primary = ui.el("div", { class: "clip-player__controls" }, playBtn, ...(opts.actions ?? []));
-  const secondary = ui.el("div", { class: "clip-player__secondary" }, skipBtn, offsetReadout, volumeHost);
+  const secondary = ui.el("div", { class: "clip-player__secondary" }, volumeHost);
 
   const root = ui.el("div", { class: "clip-player" }, meter, hint, gate, primary, secondary);
 
@@ -95,24 +85,6 @@ export function createClipPlayer(ctx, opts = {}) {
       ticks.children[i].classList.toggle("clip-player__tick--unlocked", i <= st.stepIndex);
     }
     length.textContent = ui.formatMs(targetMs);
-  }
-
-  function syncOffset() {
-    offsetReadout.hidden = st.fromMs <= 0;
-    if (st.fromMs > 0) offsetReadout.textContent = `Arranca en ${ui.formatMs(st.fromMs)}`;
-  }
-
-  function advanceOffset() {
-    stop();
-    if (st.fromMs >= OFFSET_CEILING_MS) {
-      st.fromMs = 0;
-      st.offsetIndex = 0;
-    } else {
-      const next = growOffset(st.fromMs, st.offsetIndex, OFFSET_CEILING_MS);
-      st.fromMs = next.fromMs;
-      st.offsetIndex = next.stepIndex;
-    }
-    syncOffset();
   }
 
   async function play() {
@@ -159,17 +131,15 @@ export function createClipPlayer(ctx, opts = {}) {
     syncMeter();
   }
 
-  function setTrack(trackData) {
+  function setTrack(trackData, { fromMs = 0 } = {}) {
     stop();
     st.track = trackData ?? null;
     st.primed = false;
     st.stepIndex = 0;
-    st.fromMs = 0;
-    st.offsetIndex = 0;
+    st.fromMs = fromMs > 0 ? fromMs : 0;
     syncMeter();
-    syncOffset();
     if (st.track) {
-      st.priming = ctx.player.prime(st.track.uri);
+      st.priming = ctx.player.prime(st.track.uri, { positionMs: st.fromMs });
       st.priming.then((ok) => { st.primed = ok; });
     }
   }
@@ -181,7 +151,6 @@ export function createClipPlayer(ctx, opts = {}) {
   }
 
   syncMeter();
-  syncOffset();
   syncStatus();
 
   return {

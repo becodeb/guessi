@@ -3367,7 +3367,7 @@ button {
 
 /* --------------------------------------------------------------------------
    Clip player (game kit, task T3): a linear pill meter up to the longest
-   step (3,2s), one big Play/Stop, a start-offset skip and a compact volume.
+   step (3,2s), one big Play/Stop and a compact volume.
    src/clip-player.js owns the markup; games only mount it and call its API.
    -------------------------------------------------------------------------- */
 
@@ -3493,10 +3493,6 @@ button {
   flex-wrap: wrap;
 }
 
-.clip-player__offset {
-  white-space: nowrap;
-}
-
 /* volumeControl() builds `.volume`; this modifier only shrinks it to fit a
    secondary control row instead of the round's full-width one. */
 .volume.volume--compact {
@@ -3507,8 +3503,8 @@ button {
   width: 84px;
 }
 
-/* 390px: Play + any game-supplied actions keep one line; skip/volume wrap
-   onto their own row instead of forcing horizontal scroll. */
+/* 390px: Play + any game-supplied actions keep one line; volume wraps onto
+   its own row instead of forcing horizontal scroll. */
 @media (max-width: 420px) {
   .clip-player__secondary {
     width: 100%;
