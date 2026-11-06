@@ -1,7 +1,7 @@
 // No-framework unit harness for src/lyrics-queue.js and src/letra-color.js.
 // Run with: node tests/lyrics-queue.test.mjs  (exit code 0 = all pass)
 
-import { createQueue } from "../src/lyrics-queue.js";
+import { createQueue, playableTracks } from "../src/lyrics-queue.js";
 import {
   floodFromRgb, deepOf, fallbackFlood, fromHex, whiteContrast, rgbToHsl, hslToRgb,
   dominantRgb, MIN_CONTRAST,
@@ -137,6 +137,15 @@ const seq = (...vals) => { let i = 0; return () => vals[i++ % vals.length]; };
   const [r, g, b] = dominantRgb(data);
   check("saturated pixel wins over gray", r > g + 40 && r > b + 40, true);
   check("fully transparent image has no color", dominantRgb(new Uint8ClampedArray([0, 0, 0, 0])), null);
+}
+
+// --- playableTracks: album tracklists arrive without a uri ---------------------
+{
+  const out = playableTracks([{ id: "abc" }, { id: "def", uri: "spotify:track:relinked" }, { name: "no id" }, null]);
+  check("playable: drops entries without an id", out.length, 2);
+  check("playable: rebuilds a missing uri from the id", out[0].uri, "spotify:track:abc");
+  check("playable: keeps a uri that is already there", out[1].uri, "spotify:track:relinked");
+  check("playable: no tracks is an empty list", playableTracks(undefined).length, 0);
 }
 
 if (failures.length > 0) {

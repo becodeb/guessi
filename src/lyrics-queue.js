@@ -14,6 +14,19 @@ function shuffled(items, rng) {
 }
 
 /**
+ * Tracks the game can actually play. Some Spotify endpoints come back without
+ * `uri` (the album tracklist's field mask drops it), and a play request with a
+ * missing uri is a 400, so it is rebuilt from the id here.
+ * @param {object[]} tracks
+ * @returns {object[]}
+ */
+export function playableTracks(tracks) {
+  return (tracks ?? [])
+    .filter((t) => t?.id)
+    .map((t) => (t.uri ? t : { ...t, uri: `spotify:track:${t.id}` }));
+}
+
+/**
  * @param {Array<{id: string}>} tracks
  * @param {{startIndex?: number, rng?: () => number}} [opts]
  */

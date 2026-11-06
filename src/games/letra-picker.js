@@ -6,6 +6,7 @@ import * as ui from "../ui.js";
 import { artistNames } from "../clip-guess.js";
 import { parseSpotifyRef, looksLikeSpotifyLink } from "../spotify-link.js";
 import { UnreadablePlaylistError } from "../library.js";
+import { playableTracks } from "../lyrics-queue.js";
 
 const SEARCH_DEBOUNCE_MS = 320;
 
@@ -100,7 +101,7 @@ export function mountPicker(host, { ctx, onStart }) {
     try {
       const out = await load();
       if (!alive) return;
-      const tracks = (out?.tracks ?? out ?? []).filter((t) => t?.id);
+      const tracks = playableTracks(out?.tracks ?? out);
       if (tracks.length === 0) {
         say("No encontré canciones ahí. Prueba con otra lista o busca una canción.");
         return;
