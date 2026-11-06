@@ -80,6 +80,7 @@ export function mount(container, ctx) {
     ctx.player.onPlayback(onPlayback),
     ctx.player.onPremiumError(() => paintTransport()),
     ctx.player.onReady(() => paintTransport()),
+    ctx.player.onNotice(onPlayerNotice),
   );
   document.addEventListener("keydown", onDocKeydown, true);
   if (window.visualViewport) {
@@ -956,8 +957,20 @@ function onDocKeydown(e) {
 function audioIssue() {
   const { ctx } = handle;
   if (!ctx.player.isPremium()) return "Escuchar necesita Spotify Premium. Puedes jugar igual.";
-  if (ctx.state.player.status === "error") return "El reproductor de Spotify no se pudo conectar. Puedes jugar igual.";
+  // On a phone a broken browser player is not the end: pressing play hands the
+  // song to the Spotify app (player.js), so only a desktop is blocked here.
+  if (!isCoarse() && ctx.state.player.status === "error") {
+    return "El reproductor de Spotify no se pudo conectar. Puedes jugar igual.";
+  }
   return "";
+}
+
+function onPlayerNotice(kind) {
+  if (!handle?.alive) return;
+  if (kind === "remote-playing") ui.toast("Sonando en tu app de Spotify", "info");
+  else if (kind === "no-remote-device") {
+    ui.toast("Abre la app de Spotify en este celular y vuelve a tocar play.", "info");
+  }
 }
 
 function positionOf(entry) {
@@ -992,8 +1005,8 @@ async function startPlay(entry, positionMs) {
   } else if (res.reason !== "stale" && my === h.playSeq) {
     h.wantPlay = false;
     h.playing = false;
-    if (res.reason === "premium") {
-      // player.js already told everyone; the bar shows why.
+    if (res.reason === "premium" || res.reason === "no-remote-device") {
+      // player.js already told everyone (the bar, or a toast); nothing to add.
     } else if (res.reason === "no-device") {
       ui.toast("El reproductor de Spotify todavía no está listo. Inténtalo de nuevo en un momento.", "error");
     } else {

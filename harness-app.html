@@ -85,6 +85,11 @@
       // requests go through to the real network, so the lyrics game can be
       // driven end to end against real lyrics.
       var REAL = params.get("real") === "1";
+      // ?sdk=dead: the SDK connects but never gets a device. ?sdk=silent: a device
+      // is ready and the play request works, but no player state is ever reported
+      // (what some phones do). ?devices=none: the account has no other device.
+      var SDK_MODE = params.get("sdk"); // "dead" | "silent" | null
+      var NO_DEVICES = params.get("devices") === "none";
 
       // --- fake catalog ------------------------------------------------------
       // ~10 real Latin/Argentine rock & pop albums, ~4 tracks each (~40 tracks),
@@ -322,6 +327,7 @@
         // Short async delay so "conectando" is at least momentarily real,
         // per the task's own "resolve after a short delay" instruction —
         // this is not simulating real audio, just the SDK's device handshake.
+        if (SDK_MODE === "dead") return Promise.resolve(true);
         setTimeout(function () {
           self._emit("ready", { device_id: "harness-device-1" });
           if (!window.__harnessPremium) {
@@ -359,9 +365,11 @@
       // silence guard in player.js would slow their prime() down otherwise.
       HarnessFakePlayer.prototype._notify = function () {
         if (location.hash.indexOf("letra") === -1) return;
+        if (SDK_MODE === "silent") return;
         this._emit("player_state_changed", this._state());
       };
       HarnessFakePlayer.prototype.getCurrentState = function () {
+        if (SDK_MODE === "silent") return Promise.resolve(null);
         return Promise.resolve(this._state());
       };
       HarnessFakePlayer.prototype._log = function (name, arg) {
@@ -537,9 +545,61 @@
         return json([]);
       }
 
+      // The Spotify app on the user's phone: a second device that plays when it
+      // is told to (PUT play with its device_id) and that GET /me/player reflects.
+      // window.__harnessRemote can be edited from a test to simulate another
+      // device taking over; window.__harnessRemoteGone makes it answer 404.
+      var PHONE_ID = "phone-1";
+      var REMOTE = { deviceId: null, uri: null, playing: false, pos: 0, anchor: 0 };
+      window.__harnessRemote = REMOTE;
+      function remotePos() { return REMOTE.playing ? REMOTE.pos + (Date.now() - REMOTE.anchor) : REMOTE.pos; }
+      function deviceList() {
+        if (NO_DEVICES) return [];
+        var list = [{ id: PHONE_ID, name: "Pixel de prueba", type: "Smartphone", is_active: false, is_restricted: false },
+          { id: "tv-1", name: "Sala", type: "TV", is_active: false, is_restricted: true }];
+        if (SDK_MODE !== "dead") list.unshift({ id: "harness-device-1", name: "de oído", type: "Computer", is_active: false, is_restricted: false });
+        return list;
+      }
+      function remoteControl(u, path, method, init) {
+        var id = u.searchParams.get("device_id");
+        if (window.__harnessRemoteGone || !deviceList().some(function (d) { return d.id === id; })) {
+          return json({ error: { status: 404, message: "Device not found", reason: "NO_ACTIVE_DEVICE" } }, 404);
+        }
+        if (path === "/me/player/play") {
+          var body = init && init.body ? JSON.parse(init.body) : {};
+          REMOTE.deviceId = id;
+          if (body.uris && body.uris[0]) { REMOTE.uri = body.uris[0]; REMOTE.pos = body.position_ms || 0; }
+          else REMOTE.pos = remotePos();
+          REMOTE.playing = true;
+          REMOTE.anchor = Date.now();
+        } else if (path === "/me/player/pause") {
+          REMOTE.pos = remotePos();
+          REMOTE.playing = false;
+        } else if (path === "/me/player/seek") {
+          REMOTE.pos = Number(u.searchParams.get("position_ms")) || 0;
+          REMOTE.anchor = Date.now();
+        }
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+
       function handleSpotifyApi(u, method, init) {
         var path = u.pathname.replace(/^\/v1/, "");
         var m;
+
+        if (path === "/me/player/devices" && method === "GET") return json({ devices: deviceList() });
+        if (path === "/me/player" && method === "GET") {
+          if (!REMOTE.deviceId) return Promise.resolve(new Response(null, { status: 204 }));
+          var rt = ALL_TRACKS.filter(function (x) { return x.uri === REMOTE.uri; })[0];
+          return json({
+            device: { id: REMOTE.deviceId, name: "Pixel de prueba", type: "Smartphone", is_active: true },
+            is_playing: REMOTE.playing, progress_ms: Math.round(remotePos()),
+            item: { uri: REMOTE.uri, duration_ms: rt ? rt.duration_ms : 200000 },
+          });
+        }
+        if ((path === "/me/player/pause" || path === "/me/player/seek") && method === "PUT") return remoteControl(u, path, method, init);
+        if (path === "/me/player/play" && method === "PUT" && u.searchParams.get("device_id") !== "harness-device-1") {
+          return remoteControl(u, path, method, init);
+        }
 
         if (path === "/me" && method === "GET") return json(ME);
 
