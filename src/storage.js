@@ -11,7 +11,6 @@ const KEYS = {
   library: `${PREFIX}library`,
   lyrics: `${PREFIX}lyrics`,
   manualLyrics: `${PREFIX}manualLyrics`,
-  lyricsGameMode: `${PREFIX}lyricsGameMode`,
   aiForms: `${PREFIX}aiForms`,
 };
 
@@ -218,17 +217,6 @@ export function saveManualLyrics(map) {
   write(KEYS.manualLyrics, map);
 }
 
-// --- lyrics game mode preference (task T4 — pure convenience, never blocks) --
-
-/** Last chosen "Completa la letra" mode ("timed" | "full"), or null. */
-export function loadLyricsGameMode() {
-  const v = read(KEYS.lyricsGameMode, null);
-  return v === "timed" || v === "full" ? v : null;
-}
-
-export function saveLyricsGameMode(mode) {
-  write(KEYS.lyricsGameMode, mode);
-}
 // --- AI-suggested spellings for elided lyric words (task T4, never blocks) ----
 
 /** `{ "<raw word>": ["full form", ...] }`; an empty list means "asked, nothing to add". */

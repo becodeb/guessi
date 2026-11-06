@@ -132,60 +132,27 @@ function pickSuggestion(query, { index = 0 } = {}) {
   };
 }
 
-// lyrics-game.js ("Completa la letra"): interactions built on the "Pista"
-// button — it always reveals a letter of *some* blank, deterministically,
-// unlike the blank words themselves (chosen by lyrics-quiz.js's rng from
-// harness-app.html's placeholder lyrics), which would be fragile to
-// hand-predict here. stubRandom (Math.random pinned to 0) still makes the
-// whole run deterministic — same song draw order, same fragment, same blanks
-// — every time this script runs.
+// lyrics-game.js ("Contrarreloj", #/juegos/letra/contrarreloj): interactions
+// built on the "Pista" button — it always reveals a letter of *some* blank,
+// deterministically, unlike the blank words themselves (chosen by
+// lyrics-quiz.js's rng from harness-app.html's placeholder lyrics), which would
+// be fragile to hand-predict here. stubRandom (Math.random pinned to 0) still
+// makes the whole run deterministic — same song draw order, same fragment,
+// same blanks — every time this script runs.
 function startRandomRun() {
   return async (page) => {
-    // Two clicks now (task T4): step 1 picks the mode (Contrarreloj is the
-    // primary choice there too), step 2 picks the source (Al azar). Both
-    // steps render into the same start card and reuse the same
-    // ".lyrics-quiz__choice--primary" class for their left/primary option.
-    await page.locator(".lyrics-quiz__choice--primary").click();
+    // One click: the start screen goes straight to the source choice and
+    // "Al azar" is its primary option.
     await page.locator(".lyrics-quiz__choice--primary").click();
     await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
   };
 }
 
-// task T4: same two-step start, but picks "Canción entera" then "Al azar".
-function startFullSongRun() {
+// Opens the first source tile ("Lo que sé") and waits for the lyrics to render.
+function startLetraSong() {
   return async (page) => {
-    await page.locator(".lyrics-quiz__choice", { hasText: "Canción entera" }).click();
-    await page.locator(".lyrics-quiz__choice--primary").click();
-    await page.waitForSelector(".lyrics-quiz__whole", { timeout: 8000 });
-  };
-}
-
-// "estribillo", "palabras" and "jugador" each appear 5-6 times across
-// harness-app.html's long fixture (verified by word-frequency count, not
-// guessed) — typing one lights up every occurrence at once, the whole point
-// of "Canción entera"'s fill-everywhere rule.
-function typeSomeWholeWords() {
-  return async (page) => {
-    const input = page.locator(".lyrics-quiz__whole-controls .lyrics-quiz__input").first();
-    for (const word of ["estribillo", "palabras", "jugador"]) {
-      if (await input.isDisabled().catch(() => true)) break;
-      await input.fill(word).catch(() => {});
-      await page.waitForTimeout(30);
-    }
-  };
-}
-
-function toggleWholeFirstLetters() {
-  return async (page) => {
-    await page.locator(".lyrics-quiz__whole-controls button", { hasText: "Mostrar primeras letras" }).click();
-  };
-}
-
-function giveUpWholeSong() {
-  return async (page) => {
-    await page.locator(".lyrics-quiz__whole-controls button", { hasText: "Me rindo" }).click();
-    await page.locator(".lyrics-quiz__whole-controls button", { hasText: "Sí, terminar" }).click();
-    await page.waitForSelector(".lyrics-quiz__reveal", { timeout: 4000 });
+    await page.locator(".letra-tile").first().click();
+    await page.waitForSelector(".letra__line", { timeout: 8000 });
   };
 }
 
@@ -235,7 +202,6 @@ function typeSomeKnownWords() {
 
 function playFullLyricsRun() {
   return async (page) => {
-    await page.locator(".lyrics-quiz__choice--primary").click(); // mode: Contrarreloj
     await page.locator(".lyrics-quiz__choice--primary").click(); // source: Al azar
     for (let song = 0; song < 5; song++) {
       await page.waitForSelector(".lyrics-quiz__fragment", { timeout: 8000 });
@@ -290,19 +256,43 @@ const TARGETS = [
   { name: "ronda-mid", query: {}, hash: hashFor("/juegos/ronda"), wait: ".round-sec--song .guess__input",
     interaction: wrongGuess(".round-sec--song .guess__input", "un título incorrecto") },
 
-  // lyrics-game.js ("Completa la letra", task T3).
-  { name: "letra", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start" },
-  { name: "letra-mid", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+  // letra-game.js ("Completa la letra"): the full-screen lyrics typing game.
+  // Songs come from harness-app.html's invented placeholder lyrics.
+  { name: "letra", query: {}, hash: hashFor("/juegos/letra"), wait: ".letra-pick__input" },
+  { name: "letra-search", query: {}, hash: hashFor("/juegos/letra"), wait: ".letra-pick__input",
+    interaction: async (page) => { await page.locator(".letra-pick__input").fill("soda"); },
+    settleWait: ".letra-row" },
+  { name: "letra-play", query: {}, hash: hashFor("/juegos/letra"), wait: ".letra-pick__input",
+    interaction: startLetraSong(), settleWait: ".letra__line" },
+  { name: "letra-typing", query: {}, hash: hashFor("/juegos/letra"), wait: ".letra-pick__input",
+    interaction: async (page) => { await startLetraSong()(page); await page.keyboard.type("un verso de prue", { delay: 15 }); },
+    settleWait: ".letra__w.is-on" },
+  { name: "letra-finish", query: {}, hash: hashFor("/juegos/letra"), wait: ".letra-pick__input",
+    interaction: async (page) => {
+      await startLetraSong()(page);
+      for (let i = 0; i < 40 && (await page.locator(".letra__finish[hidden]").count()) > 0; i++) {
+        await page.keyboard.press("Shift+Enter");
+      }
+    },
+    settleWait: ".letra__finish:not([hidden])" },
+  // Without Premium the game stays fully playable; the transport is disabled
+  // with one line saying why.
+  { name: "letra-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/letra"), wait: ".letra-pick__input",
+    interaction: startLetraSong(), settleWait: ".letra__note:not([hidden])" },
+
+  // lyrics-game.js ("Contrarreloj").
+  { name: "contrarreloj", query: {}, hash: hashFor("/juegos/letra/contrarreloj"), wait: ".lyrics-quiz__start" },
+  { name: "contrarreloj-mid", query: {}, hash: hashFor("/juegos/letra/contrarreloj"), wait: ".lyrics-quiz__start",
     stubRandom: true,
     interaction: async (page) => { await startRandomRun()(page); await clickPista(3)(page); } },
-  { name: "letra-reveal", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+  { name: "contrarreloj-reveal", query: {}, hash: hashFor("/juegos/letra/contrarreloj"), wait: ".lyrics-quiz__start",
     stubRandom: true,
     interaction: async (page) => { await startRandomRun()(page); await completeFragmentViaHints()(page); },
     settleWait: ".lyrics-quiz__reveal" },
   // Same fragment, but with some blanks typed by "the player" first — shows
   // the found (typed, normal text) vs missed (hint-finished, struck-through)
   // contrast the reveal screen draws (parent review: this needs to be visible).
-  { name: "letra-reveal-typed", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+  { name: "contrarreloj-reveal-typed", query: {}, hash: hashFor("/juegos/letra/contrarreloj"), wait: ".lyrics-quiz__start",
     stubRandom: true,
     interaction: async (page) => {
       await startRandomRun()(page);
@@ -310,32 +300,13 @@ const TARGETS = [
       await completeFragmentViaHints()(page);
     },
     settleWait: ".lyrics-quiz__reveal" },
-  { name: "letra-results", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+  { name: "contrarreloj-results", query: {}, hash: hashFor("/juegos/letra/contrarreloj"), wait: ".lyrics-quiz__start",
     stubRandom: true, interaction: playFullLyricsRun(), settleWait: ".lyrics-quiz__result" },
   // The game works without Premium; only "Escuchar el fragmento" degrades —
   // to a disabled note instead of a full-screen gate like clip-game's.
-  { name: "letra-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
+  { name: "contrarreloj-nonpremium", query: { premium: "0" }, hash: hashFor("/juegos/letra/contrarreloj"), wait: ".lyrics-quiz__start",
     stubRandom: true,
     interaction: async (page) => { await startRandomRun()(page); },
-    settleWait: ".lyrics-quiz__help-note" },
-
-  // "Canción entera" (task T4). ?longsong=1 serves harness-app.html's long
-  // invented fixture instead of the short one the targets above use, so the
-  // timed-mode shots above are untouched by this mode's own fixture.
-  { name: "letra-mode-choice", query: {}, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start" },
-  { name: "letra-full-mid", query: { longsong: "1" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
-    stubRandom: true,
-    interaction: async (page) => { await startFullSongRun()(page); await typeSomeWholeWords()(page); } },
-  { name: "letra-full-firstletters", query: { longsong: "1" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
-    stubRandom: true,
-    interaction: async (page) => { await startFullSongRun()(page); await toggleWholeFirstLetters()(page); } },
-  { name: "letra-full-giveup", query: { longsong: "1" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
-    stubRandom: true,
-    interaction: async (page) => { await startFullSongRun()(page); await typeSomeWholeWords()(page); await giveUpWholeSong()(page); },
-    settleWait: ".lyrics-quiz__reveal" },
-  { name: "letra-full-nonpremium", query: { longsong: "1", premium: "0" }, hash: hashFor("/juegos/letra"), wait: ".lyrics-quiz__start",
-    stubRandom: true,
-    interaction: async (page) => { await startFullSongRun()(page); },
     settleWait: ".lyrics-quiz__help-note" },
 ];
 

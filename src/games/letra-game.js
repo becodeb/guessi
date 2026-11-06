@@ -207,7 +207,8 @@ function entryFor(track) {
       pendingAt: 0,
       duration: track.duration_ms ?? 0,
       flood: fallbackFlood(track.id),
-      floodTried: false,
+      floodReady: false, // true once the cover was sampled (or sampling failed)
+      floodPending: false,
       t0: 0,
       elapsed: 0,
       finished: false,
@@ -377,18 +378,28 @@ function sampleCover(url) {
   });
 }
 
+/**
+ * The screen keeps the previous song's color until this cover has been
+ * sampled, so there is one change of color, not a hashed one first and the
+ * real one a moment later. A cover that cannot be read keeps the hashed palette.
+ */
 function applyFlood(entry) {
   const h = handle;
-  setFlood(entry.flood);
-  if (entry.floodTried) return;
-  entry.floodTried = true;
-  const url = coverOf(entry.track);
-  if (!url) return;
-  sampleCover(url).then((rgb) => {
-    if (!rgb) return;
-    entry.flood = floodFromRgb(rgb[0], rgb[1], rgb[2]);
+  if (entry.floodReady) {
+    setFlood(entry.flood);
+    return;
+  }
+  if (entry.floodPending) return;
+  entry.floodPending = true;
+  const done = (rgb) => {
+    entry.floodPending = false;
+    entry.floodReady = true;
+    if (rgb) entry.flood = floodFromRgb(rgb[0], rgb[1], rgb[2]);
     if (handle === h && h.alive && h.cur === entry) setFlood(entry.flood);
-  });
+  };
+  const url = coverOf(entry.track);
+  if (!url) done(null);
+  else sampleCover(url).then(done);
 }
 
 // --- play view ----------------------------------------------------------------
