@@ -228,20 +228,15 @@ export function createTypingGame(parsed) {
     const w = words[state.cursor];
     const index = state.cursor;
     const full = fullTyped(index, b);
-    if (isCutOfWhole(w, full)) {
-      state.buffer = "";
-      confirmed[index] = 0;
-      state.streak = 0;
-      state.misses++;
-      events.push({ type: "miss", index });
-    } else if (acceptsWord(w, full)) {
+    const cut = isCutOfWhole(w, full);
+    if (!cut && acceptsWord(w, full)) {
       state.buffer = "";
       reveal(index, modeFor(index), events);
     } else if (holdsWord(w, full)) {
       // Before the fuzzy check: `para` is one slip away from `paral`.
       state.buffer = `${b} `;
       events.push({ type: "hold", index });
-    } else if (fuzzyAccepts(w, full)) {
+    } else if (!cut && fuzzyAccepts(w, full)) {
       state.buffer = "";
       reveal(index, modeFor(index), events);
     } else {

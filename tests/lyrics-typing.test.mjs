@@ -476,6 +476,9 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
     g.type(`${full} ahora`);
     check(`${word}: typing ${full} lands clean`, [g.isDone(), g.stats().misses].join(), "true,0");
   }
+  check("todo': to is shorter than the lyric, no reveal", reveals("todo' bien", "to"), false);
+  check("todo': todo reveals", reveals("todo' bien", "todo"), true);
+  check("todo': todos reveals", (() => { const g = game("todo' bien"); g.type("todos bien"); return [g.isDone(), g.stats().misses].join(); })(), "true,0");
   // Numbers aren't words the lyric could cut.
   check("10:00: 10 still reveals", reveals("10:00 ya", "10"), true);
   check("2: dos still reveals", reveals("2 veces", "dos"), true);

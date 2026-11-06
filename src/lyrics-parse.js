@@ -277,14 +277,16 @@ function makeWordFields(raw, extraForms = null) {
  * True when the lyric has the word whole and `typed` is a shortened version of
  * it. A word only gets short forms if the lyric itself cuts it: `pa'` takes `pa`,
  * `para` doesn't. Spelling by ear (`ases` for `haces`) is not a cut. Words with
- * anything but letters (`10:00`, `to'`, `ba-baby`) are never whole in this sense.
+ * anything but letters and apostrophes (`10:00`, `ba-baby`) are never whole in this sense.
  */
 export function isCutOfWhole(word, typed) {
-  if (!/^\p{L}+$/u.test(word.text)) return false;
+  if (!/^[\p{L}']+$/u.test(word.text)) return false;
   const whole = plain(word.text);
   const p = plain(typed);
   if (!p || p === whole) return false;
+  // Nothing shorter than what the lyric writes counts: `to` doesn't take `todo'`.
   if (whole.startsWith(p)) return true;
+  if (word.text.includes("'")) return false;
   if (looseKey(p) !== looseKey(whole)) return false;
   if (/[sd]$/.test(whole) && !/[sd]$/.test(p)) return true; // bamo, verda
   return /[ai]dos?$|[ai]do$/.test(whole) && /[ai]os?$/.test(p); // pasao
