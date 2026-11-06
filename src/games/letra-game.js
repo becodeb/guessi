@@ -7,6 +7,7 @@ import { getLyrics } from "../lyrics.js";
 import { parseLyrics } from "../lyrics-parse.js";
 import { createTypingGame } from "../lyrics-typing.js";
 import { createQueue } from "../lyrics-queue.js";
+import { enrichForms } from "../lyrics-ai.js";
 import {
   DEFAULT_FLOOD, floodFromRgb, fallbackFlood, dominantRgb,
 } from "../letra-color.js";
@@ -343,6 +344,9 @@ async function loadEntry(entry) {
   });
   if (entry.timeline.length < 3) entry.timeline = [];
   entry.state = "ready";
+  // Optional and silent: spellings only the AI knows get added whenever it
+  // answers. The game never waits for it, and the local rules work alone.
+  enrichForms(parsed, { signal: ctrl.signal });
   return true;
 }
 

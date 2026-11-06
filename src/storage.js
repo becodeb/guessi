@@ -12,6 +12,7 @@ const KEYS = {
   lyrics: `${PREFIX}lyrics`,
   manualLyrics: `${PREFIX}manualLyrics`,
   lyricsGameMode: `${PREFIX}lyricsGameMode`,
+  aiForms: `${PREFIX}aiForms`,
 };
 
 // v1 nested a full album copy (covers included) inside every track and kept
@@ -227,4 +228,15 @@ export function loadLyricsGameMode() {
 
 export function saveLyricsGameMode(mode) {
   write(KEYS.lyricsGameMode, mode);
+}
+// --- AI-suggested spellings for elided lyric words (task T4, never blocks) ----
+
+/** `{ "<raw word>": ["full form", ...] }`; an empty list means "asked, nothing to add". */
+export function loadAiForms() {
+  const v = read(KEYS.aiForms, {});
+  return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+}
+
+export function saveAiForms(map) {
+  write(KEYS.aiForms, map);
 }
