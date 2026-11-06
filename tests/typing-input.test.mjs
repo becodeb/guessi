@@ -94,17 +94,17 @@ check("offset: nothing matches falls back to the length", offsetFor("abc", "zz")
 // --- a swallowed tail ----------------------------------------------------------
 
 {
-  // Spelled by ear, `bamo` already sounds like `vamos`; the final s is the tail.
-  const r = rig("mira vamos se va");
+  const r = rig("mira to' se va");
   r.start();
-  for (const v of ["m", "mi", "mir", "mira", "mira ", "mira b", "mira ba", "mira bam", "mira bamo"]) r.compose(v);
-  check("tail: `bamo` reveals vamos", r.game.isRevealed(1), true);
-  r.compose("mira bamos");
-  check("tail: bamos does not leak into the next word", r.game.buffer(), "");
-  check("tail: swallowed", r.game.tail(), "s");
+  for (const v of ["m", "mi", "mir", "mira", "mira ", "mira t", "mira to"]) r.compose(v);
+  check("tail: `to` reveals to'", r.game.isRevealed(1), true);
+  r.compose("mira tod");
+  r.compose("mira todo");
+  check("tail: todo does not leak into the next word", r.game.buffer(), "");
+  check("tail: swallowed", r.game.tail(), "do");
   check("tail: cursor still on the next word", r.game.cursor(), 2);
-  r.compose("mira bamos ");
-  r.compose("mira bamos s");
+  r.compose("mira todo ");
+  r.compose("mira todo s");
   check("tail: next word starts clean", r.game.buffer(), "s");
 }
 
@@ -125,15 +125,15 @@ check("offset: nothing matches falls back to the length", offsetFor("abc", "zz")
 }
 
 {
-  const r = rig("mira vamos se va");
+  const r = rig("mira to' se va");
   r.start();
-  for (const v of ["mira", "mira ", "mira bamo", "mira bamos"]) r.compose(v);
-  check("delete into tail: swallowed before", r.game.tail(), "s");
-  r.compose("mira bamo");
-  check("delete into tail: tail shrinks", r.game.tail(), "");
+  for (const v of ["mira", "mira ", "mira to", "mira tod", "mira todo"]) r.compose(v);
+  check("delete into tail: swallowed before", r.game.tail(), "do");
+  r.compose("mira tod");
+  check("delete into tail: tail shrinks", r.game.tail(), "d");
   check("delete into tail: nothing leaks", r.game.buffer(), "");
-  r.compose("mira bamos");
-  check("delete into tail: retyping is swallowed again", r.game.tail(), "s");
+  r.compose("mira todo");
+  check("delete into tail: retyping is swallowed again", r.game.tail(), "do");
   check("delete into tail: buffer still empty", r.game.buffer(), "");
 }
 

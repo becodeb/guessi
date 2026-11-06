@@ -15,7 +15,7 @@
 // hands this engine only the part past it.
 
 import {
-  acceptsWord, fuzzyAccepts, holdsWord, plain, mapHomoglyphs,
+  acceptsWord, fuzzyAccepts, holdsWord, isCutOfWhole, plain, mapHomoglyphs,
 } from "./lyrics-parse.js";
 
 /** Keep letters, digits and single spaces (accents stay for display). */
@@ -164,10 +164,13 @@ export function createTypingGame(parsed) {
     const w = words[state.cursor];
     const full = fullTyped(state.cursor, state.buffer);
     if (!acceptsWord(w, full)) return false;
-    // Anything that could still grow waits for a space or for the longer form:
-    // `q` must not take `que`, nor `to` take `todo`, while the player is typing.
+    // A word whole in the lyric never takes a shortened version. A cut one takes its
+    // short form at once: `to` reveals `to'`, and the `do` of `todo` goes to the tail.
+    // A spelling match still growing waits (`par` shares its key with `pa'l`, but the
+    // player is typing `para`).
+    if (isCutOfWhole(w, full)) return false;
     const p = plain(full);
-    if (growsIntoForm(w, p)) return false;
+    if (!w.forms.has(p) && growsIntoForm(w, p)) return false;
     const index = state.cursor;
     const typed = p;
     state.buffer = "";
@@ -225,7 +228,13 @@ export function createTypingGame(parsed) {
     const w = words[state.cursor];
     const index = state.cursor;
     const full = fullTyped(index, b);
-    if (acceptsWord(w, full)) {
+    if (isCutOfWhole(w, full)) {
+      state.buffer = "";
+      confirmed[index] = 0;
+      state.streak = 0;
+      state.misses++;
+      events.push({ type: "miss", index });
+    } else if (acceptsWord(w, full)) {
       state.buffer = "";
       reveal(index, modeFor(index), events);
     } else if (holdsWord(w, full)) {

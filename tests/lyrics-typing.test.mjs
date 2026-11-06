@@ -105,7 +105,7 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   check("pa' typed para: ra swallowed, no miss", g.stats().misses, 0);
   check("pa' typed para: cursor on the next word", g.cursor(), 1);
   check("pa' typed para: nothing leaks into the buffer", g.buffer(), "");
-  check("pa' typed para: nothing left to swallow", g.tail(), "");
+  check("pa' typed para: the swallowed tail", g.tail(), "ra");
   g.type(" ");
   g.type("ti");
   checkTrue("pa' typed para: song completes", g.isDone());
@@ -113,24 +113,16 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
 {
   const g = game("pa' ti");
   g.type("pa");
-  check("pa' typed pa waits, it could become para", g.isRevealed(0), false);
-  check("pa' typed pa stays visible", g.buffer(), "pa");
-  g.type(" ");
-  check("pa' typed pa + space", g.isRevealed(0), true);
-  check("pa' typed pa + space: clean", g.buffer(), "");
+  check("pa' typed pa", g.isRevealed(0), true);
+  check("pa' typed pa: no swallowed chars", g.tail(), "");
 }
 {
   const g = game("para ti");
   g.type("pa");
   check("written para: pa alone waits", g.isRevealed(0), false);
   g.type("ra");
-  check("written para: continuing reveals it", g.isRevealed(0), true);
+  check("written para: finishing it reveals", g.isRevealed(0), true);
   check("written para: on word 2 with a clean buffer", [g.cursor(), g.buffer()].join(), "1,");
-}
-{
-  const g = game("para ti");
-  g.type("pa ");
-  check("written para accepts pa + space", g.isRevealed(0), true);
 }
 {
   const g = game("para ti");
@@ -144,13 +136,12 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
 {
   const g = game("to' bien");
   g.type("to");
-  check("to' waits on to", g.isRevealed(0), false);
+  check("to' revealed on to", g.isRevealed(0), true);
   g.type("do");
-  check("to' typed todo stays in its own slot", g.buffer(), "todo");
-  check("to' typed todo: next word untouched", g.cursor(), 0);
+  check("do swallowed after to", g.tail(), "do");
+  check("tail does not touch the next word", g.buffer(), "");
   g.type(" ");
-  check("space confirms to' typed todo", g.isRevealed(0), true);
-  check("space leaves a clean buffer", g.buffer(), "");
+  check("space clears the tail", g.tail(), "");
   g.type("bien");
   checkTrue("to' typed todo, then bien: done", g.isDone());
   check("no misses along the way", g.stats().misses, 0);
@@ -158,7 +149,7 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
 {
   const g = game("vamo' ya");
   g.type("vamos");
-  check("vamo' typed vamos reveals at the s", g.isRevealed(0), true);
+  check("vamo' typed vamos: s swallowed", g.tail(), "s");
   check("vamo' typed vamos: no miss", g.stats().misses, 0);
   g.type(" ya");
   checkTrue("vamo' vamos ya: done", g.isDone());
@@ -170,23 +161,27 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   checkTrue("vamo' typed vamo: done", g.isDone());
 }
 {
-  // Forgetting the space on a short form is a miss, never a leak into the next word.
-  const g = game("pa' mi");
-  g.type("pam");
-  check("pa' then m: stays in its own slot", g.buffer(), "pam");
-  check("pa' then m: next word untouched", g.cursor(), 0);
+  const g = game("to' dame");
+  g.type("todam");
+  check("a char that breaks the tail flushes tail+char into the next word", g.buffer(), "dam");
+  check("the tail is gone after the flush", g.tail(), "");
+  check("to' still revealed", g.isRevealed(0), true);
+  g.type("e");
+  checkTrue("flushed text completes the next word", g.isDone());
+  check("flush produced no miss", g.stats().misses, 0);
 }
 {
-  const g = game("todo dame");
-  g.type("tododa");
-  check("a word as written reveals, then the next starts clean", g.buffer(), "da");
-  g.type("me");
-  checkTrue("written word without a space: done", g.isDone());
+  const g = game("pa' mi");
+  g.type("pam");
+  check("pa' then m: m flushes into the next word", g.buffer(), "m");
+  check("pa' then m: pa' revealed", g.isRevealed(0), true);
+  g.type("i");
+  checkTrue("pa' m i: done", g.isDone());
 }
 {
   const g = game("ve' yo ya");
   g.type("vez");
-  check("ve' typed vez reveals at the z", g.isRevealed(0), true);
+  check("ve' typed vez: z swallowed", g.tail(), "z");
   g.type("y");
   check("ve' then y: y goes to the next word", g.buffer(), "y");
   g.type("o");
@@ -454,34 +449,36 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   check("urban spelling variants share a signature", g.isRevealed(2), true);
 }
 
-// --- short forms wait instead of taking the word early ------------------------------
+// --- the lyric decides: whole words stay whole, cut words accept the cut ------------
 {
-  const early = (text, typed) => { const g = game(text); g.type(typed); return g.isRevealed(0); };
-  check("que: q alone does not reveal", early("que dicen", "q"), false);
-  check("que: qu does not reveal", early("que dicen", "qu"), false);
-  check("que: typing it whole reveals at once", early("que dicen", "que"), true);
-  check("todo: to alone does not reveal", early("todo bien", "to"), false);
-  check("todo: typing it whole reveals at once", early("todo bien", "todo"), true);
-  check("nada: na alone does not reveal", early("nada mas", "na"), false);
-  check("es: e alone does not reveal", early("es asi", "e"), false);
-  check("to': to alone waits, it could become todo", early("to' bien", "to"), false);
-  check("pa': para reveals without a space", early("pa' ti", "para"), true);
-  check("vamo': vamos reveals without a space", early("vamo' ya", "vamos"), true);
+  const reveals = (text, typed) => { const g = game(text); g.type(typed); return g.isRevealed(0); };
+  // Whole in the lyric: only the whole word.
+  for (const [word, cut] of [["que", "q"], ["que", "qu"], ["todo", "to"], ["para", "pa"], ["nada", "na"], ["es", "e"], ["vez", "ve"], ["vamos", "vamo"], ["vamos", "bamo"], ["verdad", "verda"], ["pasado", "pasao"], ["los", "lo"]]) {
+    check(`${word}: ${cut} does not reveal`, reveals(`${word} ahora`, cut), false);
+    const g = game(`${word} ahora`);
+    g.type(`${cut} `);
+    check(`${word}: ${cut} + space is a miss`, [g.isRevealed(0), g.stats().misses].join(), "false,1");
+    check(`${word}: the miss clears the slot`, g.buffer(), "");
+  }
+  for (const word of ["que", "todo", "para", "nada", "es", "vez", "vamos", "verdad", "pasado", "los"]) {
+    check(`${word}: typing it whole reveals with no space`, reveals(`${word} ahora`, word), true);
+  }
+  check("haces: spelled by ear still counts", reveals("haces eso", "ases"), true);
+  check("vamos: spelled by ear still counts", reveals("vamos ya", "bamos"), true);
+  check("caminando: a typo on space still counts", (() => { const g = game("caminando ya"); g.type("camimando "); return g.isRevealed(0); })(), true);
 
-  let g = game("que dicen");
-  g.type("q ");
-  check("q + space still counts as que", g.isRevealed(0), true);
-  g = game("to' bien");
-  g.type("to ");
-  check("to + space still counts as to'", g.isRevealed(0), true);
-  check("to + space leaves the next word clean", g.buffer(), "");
-
-  g = game("que dicen");
-  g.type("que dicen");
-  check("typed fast, each word lands on its own", [g.isRevealed(0), g.isRevealed(1), g.buffer()].join(), "true,true,");
-  g = game("todo bien");
-  g.type("TODO BIEN");
-  check("capital letters behave the same", [g.isRevealed(0), g.isRevealed(1), g.buffer()].join(), "true,true,");
+  // Cut in the lyric: the short form, instantly, or the full word.
+  for (const [word, short] of [["pa'", "pa"], ["to'", "to"], ["na'", "na"], ["vamo'", "vamo"], ["ve'", "ve"], ["la'o", "lao"]]) {
+    check(`${word}: ${short} reveals with no space`, reveals(`${word} ahora`, short), true);
+  }
+  for (const [word, full] of [["pa'", "para"], ["to'", "todo"], ["na'", "nada"], ["vamo'", "vamos"], ["ve'", "vez"], ["la'o", "lado"]]) {
+    const g = game(`${word} ahora`);
+    g.type(`${full} ahora`);
+    check(`${word}: typing ${full} lands clean`, [g.isDone(), g.stats().misses].join(), "true,0");
+  }
+  // Numbers aren't words the lyric could cut.
+  check("10:00: 10 still reveals", reveals("10:00 ya", "10"), true);
+  check("2: dos still reveals", reveals("2 veces", "dos"), true);
 }
 
 // --- locked hint letters --------------------------------------------------------------

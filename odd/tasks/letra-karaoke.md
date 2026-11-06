@@ -374,11 +374,12 @@ scroll at 360. Parent read the phone screenshots and reran `npm test`. Deviation
 in commits 21e5bfe to effffce. Pending on a real phone: Gboard, real keyboard height,
 SDK sound, Spotify app fallback, whether Enter keeps the keyboard up.
 
-Accepted change from play testing: a form that can still grow never auto-reveals
-(`q` for `que`, `to` for `todo`, `pa` for `pa'`); it needs a space or the longer form.
-This replaces the tail swallow described in T1 for those cases. Replay of 53 real songs,
-16474 words typed bare: 0 early reveals, 0 misses, 0 leaks. The leak the user saw on their
-keyboard was never reproduced in simulation; the new rule removes the path it needs.
+Accepted change from play testing, the user's rule: the lyric decides. A word whole in
+the lyric must be typed whole (`q` never takes `que`, `to` never takes `todo`, not even
+with a space; spelling by ear and typos still count). A word cut in the lyric takes its
+short form at once with no space (`pa` for `pa'`), or the full word (`para`), whose
+rest is swallowed. Never require a space. A leak of swallowed letters into the next word
+was seen by the user on their device and never reproduced in simulation.
 
 ## Next step
 
