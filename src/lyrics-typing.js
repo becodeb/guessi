@@ -9,6 +9,10 @@
 // Hint letters are a locked prefix of the word: they live outside the buffer,
 // so they can't be erased, and what the player typed is always judged as
 // hint + buffer. Retyping a hint letter confirms it instead of doubling it.
+//
+// While an on-screen keyboard is composing a word the field must not be
+// written to: src/typing-input.js keeps an offset into the field's value and
+// hands this engine only the part past it.
 
 import {
   acceptsWord, fuzzyAccepts, holdsWord, plain, mapHomoglyphs,
@@ -413,6 +417,22 @@ export function createTypingGame(parsed) {
     /** Index of the current word, or -1 when the song is complete. */
     cursor: () => state.cursor,
     buffer: () => state.buffer,
+    /**
+     * The player erased `n` characters that belong to the word just revealed
+     * (an on-screen keyboard still holds them in its composing text). The
+     * swallowed tail shrinks with them, so retyping them is swallowed again.
+     */
+    dropTail(n) {
+      const t = state.tail;
+      if (!t || !(n > 0)) return;
+      const fromSwallowed = Math.min(n, t.swallowed.length);
+      t.swallowed = t.swallowed.slice(0, t.swallowed.length - fromSwallowed);
+      const rest = n - fromSwallowed;
+      if (rest > 0) {
+        t.typed = t.typed.slice(0, Math.max(0, t.typed.length - rest));
+        if (!t.typed) state.tail = null;
+      }
+    },
     /** Characters swallowed after the last auto-reveal (for tests/debug). */
     tail: () => (state.tail ? state.tail.swallowed : ""),
     isDone: () => isDone(),

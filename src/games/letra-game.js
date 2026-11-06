@@ -6,6 +6,7 @@ import * as ui from "../ui.js";
 import { getLyrics } from "../lyrics.js";
 import { parseLyrics } from "../lyrics-parse.js";
 import { createTypingGame } from "../lyrics-typing.js";
+import { createInputFeed, feedInput } from "../typing-input.js";
 import { createQueue } from "../lyrics-queue.js";
 import { enrichForms } from "../lyrics-ai.js";
 import {
@@ -24,6 +25,11 @@ let handle = null;
 
 function reducedMotion() {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** A finger is the main pointer: the on-screen keyboard must be asked for by a tap. */
+function isCoarse() {
+  return typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 }
 
 function clock(ms) {
@@ -252,7 +258,7 @@ function activate(track, dir, from) {
       renderLyrics(entry);
       paintAll(entry);
       scrollToCursor(entry, false);
-      h.view.input.focus({ preventScroll: true });
+      if (!isCoarse()) h.view.input.focus({ preventScroll: true });
       if (h.wantPlay) startPlay(entry, entry.pending);
       return;
     }
@@ -416,12 +422,16 @@ function buildPlayView() {
   const { ctx } = h;
 
   const input = ui.el("input", {
-    class: "letra__input", type: "text",
+    class: "letra__input", type: "text", inputmode: "text",
     autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false",
     enterkeyhint: "done", "aria-label": "Escribe la palabra que sigue",
   });
   input.addEventListener("input", onInput);
   input.addEventListener("keydown", onKeydown);
+  input.addEventListener("compositionstart", onCompositionStart);
+  input.addEventListener("compositionend", onCompositionEnd);
+  input.addEventListener("focus", paintFocus);
+  input.addEventListener("blur", paintFocus);
 
   const back = ui.el("button", {
     class: "letra__back", type: "button", "aria-label": "Elegir otra canción",
@@ -437,8 +447,15 @@ function buildPlayView() {
   const lyrics = ui.el("div", { class: "letra__lyrics" });
   const scroller = ui.el("main", { class: "letra__scroller", "aria-label": "Letra", tabindex: "-1" }, lyrics);
   scroller.addEventListener("click", onLyricsClick);
+  for (const type of ["touchmove", "wheel"]) {
+    scroller.addEventListener(type, () => { if (handle?.view) handle.view.scrolledAway = true; }, { passive: true });
+  }
+  // A tap on the lyrics must not drop the field's focus on its way to the
+  // click (the scroller is focusable); scrolling by finger is unaffected.
+  scroller.addEventListener("mousedown", (e) => { if (document.activeElement === input) e.preventDefault(); });
 
   const finish = ui.el("div", { class: "letra__finish", hidden: true, role: "status" });
+  const invite = ui.el("p", { class: "letra__invite", text: "Toca la letra para escribir" });
 
   // Bar: song | transport | tools.
   const coverImg = ui.el("img", { class: "letra__cover", alt: "", crossorigin: "anonymous", decoding: "async" });
@@ -492,7 +509,8 @@ function buildPlayView() {
   const bar = ui.el("footer", { class: "letra__bar" }, now, transport, tools);
   // A mouse click on a button hands the keyboard back to the hidden field, so
   // the next letter is typed instead of re-activating the button.
-  for (const zone of [bar, top]) {
+  for (const zone of [bar, top, finish]) {
+    keepFocus(zone);
     zone.addEventListener("click", (e) => {
       if (e.detail > 0 && e.target.closest("button")) requestAnimationFrame(refocus);
     });
@@ -500,14 +518,45 @@ function buildPlayView() {
   const live = ui.liveRegion();
 
   h.root.dataset.mode = "play";
-  h.root.replaceChildren(top, scroller, finish, bar, input, live);
+  h.root.replaceChildren(top, scroller, invite, finish, bar, input, live);
   h.view = {
-    root: h.root, input, top, back, streak, count, progFill, scroller, lyrics, finish, bar, coverImg, title, artist,
+    root: h.root, input, invite, feed: createInputFeed(), composing: false, top, back, streak, count, progFill, scroller, lyrics, finish, bar, coverImg, title, artist,
     shuffle, prev, play, next, repeat, elapsed, total, seek, seekRow, note, hint, revealLine, listen, giveUp, volume, live,
-    typingTimer: 0, seeking: false, lastClock: "",
+    typingTimer: 0, seeking: false, scrolledAway: false, lastClock: "",
   };
   fitViewport();
+  paintFocus();
   requestAnimationFrame(measureBar);
+}
+
+/**
+ * A control must not take the keyboard away from the hidden field, nor open
+ * it: pressing a button leaves focus exactly where it was. (A mouse press and
+ * a finger both end in a mousedown, and cancelling it keeps the focus; the
+ * click still fires.) The seek slider has to receive the press to be dragged,
+ * so it only remembers whether the keyboard was up, to put it back after.
+ */
+function keepFocus(zone) {
+  const onDown = (e) => {
+    const h = handle;
+    if (!h?.view) return;
+    const t = e.target;
+    if (t.closest?.("button, a")) {
+      e.preventDefault();
+    } else if (t.closest?.("input[type=range]")) {
+      h.restoreKeyboard = document.activeElement === h.view.input;
+    }
+  };
+  zone.addEventListener("pointerdown", onDown);
+  zone.addEventListener("mousedown", onDown);
+}
+
+function paintFocus() {
+  const v = handle?.view;
+  if (!v) return;
+  const on = document.activeElement === v.input;
+  v.root.classList.toggle("is-focused", on);
+  v.invite.hidden = on || !isCoarse();
 }
 
 function paintNow(entry) {
@@ -701,7 +750,7 @@ function afterEngine(entry, events) {
   const h = handle;
   const v = h.view;
   const g = entry.game;
-  if (v.input.value !== g.buffer()) v.input.value = g.buffer();
+  syncField(g);
   if (!entry.t0 && events.some((e) => e.type !== "typing" || g.buffer())) entry.t0 = Date.now();
 
   const dirty = new Set();
@@ -730,7 +779,9 @@ function afterEngine(entry, events) {
   paintBacking(entry, [...lines].filter((l) => l >= 0 && l < entry.backs.length));
   entry.cursor = c;
   const moved = paintCursorLine(entry);
-  if (moved) scrollToCursor(entry);
+  // Typing returns to the cursor even after the lyrics were scrolled by hand.
+  if (moved || v.scrolledAway) scrollToCursor(entry);
+  v.scrolledAway = false;
   paintProgress(entry);
   paintStreak(entry);
 
@@ -753,11 +804,44 @@ function lineComplete(entry, l) {
   return true;
 }
 
-function onInput() {
+/**
+ * Keeps the hidden field and the engine's buffer in step. While a keyboard is
+ * composing a word the field is never written to (that duplicates or revives
+ * text); the feed only moves its offset instead.
+ */
+function syncField(g) {
+  const v = handle.view;
+  if (v.composing) {
+    v.feed.settle(v.input.value, g.buffer());
+  } else {
+    if (v.input.value !== g.buffer()) v.input.value = g.buffer();
+    v.feed.reset();
+  }
+}
+
+function onInput(e) {
   const entry = readyEntry();
   if (!entry) return;
   const v = handle.view;
-  afterEngine(entry, entry.game.setBuffer(v.input.value));
+  const { events } = feedInput(v.input, v.feed, entry.game, v.composing || Boolean(e?.isComposing));
+  afterEngine(entry, events);
+}
+
+function onCompositionStart() {
+  const v = handle?.view;
+  if (!v) return;
+  v.composing = true;
+  const e = readyEntry();
+  v.feed.settle(v.input.value, e ? e.game.buffer() : "");
+}
+
+function onCompositionEnd() {
+  const v = handle?.view;
+  if (!v) return;
+  v.composing = false;
+  const e = readyEntry();
+  v.input.value = e ? e.game.buffer() : "";
+  v.feed.reset();
 }
 
 function readyEntry() {
@@ -774,17 +858,39 @@ function runEngine(fn) {
 function doHint() { runEngine((g) => g.hint()); refocus(); }
 function doRevealLine() { runEngine((g) => g.revealLine()); refocus(); }
 
+/**
+ * Hands the keyboard back to the hidden field after a control. With a mouse
+ * that is always right; with a finger the keyboard is only ever opened by a
+ * tap on the lyrics, so this just keeps it up when it already was.
+ */
 function refocus() {
-  handle?.view?.input.focus({ preventScroll: true });
+  const h = handle;
+  if (!h?.view) return;
+  if (isCoarse()) {
+    const was = h.restoreKeyboard;
+    h.restoreKeyboard = false;
+    if (!was && document.activeElement !== h.view.input) return;
+  }
+  h.view.input.focus({ preventScroll: true });
 }
 
 function onLyricsClick(e) {
+  const h = handle;
   const slot = e.target.closest?.(".letra__w");
   if (slot) {
     const entry = readyEntry();
     if (entry) afterEngine(entry, entry.game.moveCursor(Number(slot.dataset.i)));
   }
-  refocus();
+  const input = h.view.input;
+  // Android keeps the field focused after the keyboard is dismissed with the
+  // back gesture, and a focused field never shows it again: blur first.
+  if (isCoarse() && document.activeElement === input && !keyboardOpen(h)) input.blur();
+  input.focus({ preventScroll: true });
+}
+
+/** Whether the on-screen keyboard is up (set by the viewport watcher). */
+function keyboardOpen(h) {
+  return h.root.dataset.kbd === "1";
 }
 
 /** Keys that belong to the game even when focus is somewhere else. */
@@ -798,7 +904,9 @@ function shortcut(e) {
 }
 
 function onKeydown(e) {
-  if (e.isComposing) return;
+  // A desktop IME uses Enter to confirm its own text (key "Process"); a phone
+  // keyboard's action key arrives as a real Enter and should confirm the word.
+  if (e.isComposing && e.key !== "Enter") return;
   if (shortcut(e)) return;
   const entry = readyEntry();
   const k = e.key;

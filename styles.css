@@ -4770,6 +4770,25 @@ body[data-immersive] .toast {
   font-size: 16px;
 }
 
+/* Touch only (the game hides it with a mouse): the keyboard opens from a tap. */
+.letra__invite {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: calc(var(--bar-h) + 14px);
+  margin: 0;
+  padding: .55em 1.1em;
+  border-radius: 999px;
+  background: rgb(0 0 0 / .32);
+  color: rgb(255 255 255 / .92);
+  font-size: .9rem;
+  font-weight: 600;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.letra__invite[hidden] { display: none; }
+.letra.is-silent .letra__invite { bottom: calc(var(--bar-h) + 14px); }
+
 /* --- play: finish panel -------------------------------------------------------- */
 
 .letra__finish {

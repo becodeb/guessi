@@ -290,7 +290,11 @@ export function mountPicker(host, { ctx, onStart }) {
 
   return {
     say,
-    focus: () => input.focus({ preventScroll: true }),
+    // On a phone the keyboard opens from a tap on the field, never by itself.
+    focus: () => {
+      if (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) return;
+      input.focus({ preventScroll: true });
+    },
     destroy() {
       alive = false;
       clearTimeout(searchTimer);
