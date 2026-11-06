@@ -374,6 +374,12 @@ scroll at 360. Parent read the phone screenshots and reran `npm test`. Deviation
 in commits 21e5bfe to effffce. Pending on a real phone: Gboard, real keyboard height,
 SDK sound, Spotify app fallback, whether Enter keeps the keyboard up.
 
+Accepted change from play testing: a form that can still grow never auto-reveals
+(`q` for `que`, `to` for `todo`, `pa` for `pa'`); it needs a space or the longer form.
+This replaces the tail swallow described in T1 for those cases. Replay of 53 real songs,
+16474 words typed bare: 0 early reveals, 0 misses, 0 leaks. The leak the user saw on their
+keyboard was never reproduced in simulation; the new rule removes the path it needs.
+
 ## Next step
 
 The user plays and reports where they get stuck. Push and deploy are their decision.

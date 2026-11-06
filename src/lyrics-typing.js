@@ -164,10 +164,10 @@ export function createTypingGame(parsed) {
     const w = words[state.cursor];
     const full = fullTyped(state.cursor, state.buffer);
     if (!acceptsWord(w, full)) return false;
-    // A phonetic-only match that is still growing into a longer form waits
-    // (`par` collides with the key of `pa'l`, but the player is typing `para`).
+    // Anything that could still grow waits for a space or for the longer form:
+    // `q` must not take `que`, nor `to` take `todo`, while the player is typing.
     const p = plain(full);
-    if (!w.forms.has(p) && growsIntoForm(w, p)) return false;
+    if (growsIntoForm(w, p)) return false;
     const index = state.cursor;
     const typed = p;
     state.buffer = "";
@@ -185,7 +185,7 @@ export function createTypingGame(parsed) {
       return;
     }
     if (state.tail) {
-      const cand = state.tail.typed + state.tail.swallowed + c;
+      const cand = plain(state.tail.typed + state.tail.swallowed + c);
       if (continuesTail(cand)) {
         state.tail.swallowed += c;
         return;
