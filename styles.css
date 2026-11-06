@@ -4187,6 +4187,15 @@ body[data-immersive] .toast {
 .letra input {
   font-family: inherit;
 }
+.letra button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Phone-only parts of the play screen; the narrow-screen block shows them. */
+.letra__chev,
+.letra__more,
+.letra__ptitle { display: none; }
 
 /* One flat flash of the flood when a line completes. */
 .letra::after {
@@ -4459,7 +4468,7 @@ body[data-immersive] .toast {
   position: relative;
   flex: 1;
   min-height: 0;
-  padding: 30vh var(--pad) 46vh;
+  padding: var(--pt, 30vh) var(--pad) var(--pb, 46vh);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -4484,7 +4493,7 @@ body[data-immersive] .toast {
 .letra__lyrics { position: relative; max-width: 1040px; margin: 0 auto; }
 
 .letra__line {
-  --ink: rgb(255 255 255 / .78);
+  --ink: color-mix(in srgb, #fff 62%, var(--song));
   --ul: rgb(255 255 255 / .38);
   position: relative;
   margin: 0 0 .3em;
@@ -4499,7 +4508,7 @@ body[data-immersive] .toast {
   transition: color 260ms ease;
 }
 .letra__line.is-cur { --ink: #fff; --ul: rgb(255 255 255 / .5); }
-.letra__line.is-cur ~ .letra__line { --ink: rgb(255 255 255 / .5); --ul: rgb(255 255 255 / .24); }
+.letra__line.is-cur ~ .letra__line { --ul: rgb(255 255 255 / .24); }
 .letra__line.is-sung { --ink: #fff; --ul: rgb(255 255 255 / .62); }
 .letra__line.is-sung::before {
   content: "";
@@ -4758,8 +4767,8 @@ body[data-immersive] .toast {
 
 /* The hidden field that receives the typing. */
 .letra__input {
-  position: fixed;
-  bottom: 0;
+  position: absolute;
+  top: 0;
   left: 0;
   width: 1px;
   height: 1px;
@@ -4896,33 +4905,280 @@ dialog.letra-dialog::backdrop { background: rgb(0 0 0 / .55); backdrop-filter: n
 .letra-help dd { margin: 0; color: rgb(255 255 255 / .75); }
 dialog.letra-dialog .letra__cta { font-family: var(--font-text); }
 
-/* --- narrow screens: song and tools share a row, transport sits below ----------- */
+/* --- the more sheet and the finish sheet's rise (phones open them) ----------- */
+
+.letra-sheet__scrim {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  background: rgb(0 0 0 / .5);
+  animation: letra-fade 200ms ease both;
+}
+.letra-sheet {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 10px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-radius: 26px 26px 0 0;
+  background: var(--song-deep);
+  box-shadow: 0 -18px 50px -14px rgb(0 0 0 / .55);
+  animation: letra-sheet-in 280ms var(--ease-pop) both;
+}
+.letra-sheet__grip {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / .28);
+}
+.letra-sheet__meta {
+  margin: 0 14px 6px;
+  color: rgb(255 255 255 / .62);
+  font-size: .875rem;
+}
+.letra-sheet__item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 16px;
+  background: none;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -.015em;
+  text-align: left;
+  cursor: pointer;
+}
+.letra-sheet__item .icon { flex: none; width: 24px; height: 24px; color: rgb(255 255 255 / .8); }
+.letra-sheet__item:active:not(:disabled) { background: rgb(255 255 255 / .1); }
+.letra-sheet__item:disabled { opacity: .38; cursor: default; }
+@keyframes letra-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes letra-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes letra-sheet-rise {
+  from { opacity: 0; transform: translateY(32px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* --- phones: full-bleed flood, header with the song, transport at the thumb ------ */
 
 @media (max-width: 720px) {
-  .letra { --line-size: clamp(1.7rem, 7.4vw, 2.3rem); }
-  .letra__bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "now tools" "transport transport";
-    gap: 8px 8px;
-    padding-top: 10px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  .letra {
+    --pad: 20px;
+    --line-size: clamp(1.6875rem, 7.2vw, 1.875rem);
   }
-  .letra__now { grid-area: now; gap: 10px; }
-  .letra__tools { grid-area: tools; }
-  .letra__transport { grid-area: transport; }
-  .letra__cover { width: 40px; height: 40px; }
+
+  /* Header: chevron, song and artists centered, more. */
+  .letra__top {
+    position: relative;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    align-items: center;
+    min-height: 0;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 8px 12px;
+  }
+  .letra__back,
+  .letra__count { display: none; }
+  .letra__chev,
+  .letra__more {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: #fff;
+    cursor: pointer;
+  }
+  .letra__chev .icon { width: 28px; height: 28px; }
+  .letra__more .icon { width: 26px; height: 26px; }
+  .letra__ptitle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    text-align: center;
+  }
+  .letra__ptitle-t,
+  .letra__ptitle-a {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .letra__ptitle-t {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -.015em;
+    line-height: 1.3;
+  }
+  .letra__ptitle-a {
+    color: rgb(255 255 255 / .72);
+    font-size: .875rem;
+    line-height: 1.3;
+  }
+  .letra__top-right { display: contents; }
+  .letra__prog {
+    position: absolute;
+    left: var(--pad);
+    right: var(--pad);
+    bottom: 0;
+    width: auto;
+  }
+  .letra__streak {
+    position: absolute;
+    z-index: 2;
+    top: calc(100% + 6px);
+    right: var(--pad);
+    padding: .22em .75em;
+    border-radius: 999px;
+    background: rgb(0 0 0 / .24);
+    font-size: .8125rem;
+  }
+  .letra__streak[hidden] { display: none; }
+
+  /* Lyrics. The room above the first line and below the last lives on the
+     lyrics, not on the scroller, so it never props the scroller's own height
+     up (it shrinks a lot when the keyboard is on screen). */
+  .letra__scroller {
+    padding-top: 0;
+    padding-bottom: 0;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 80%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 80%, transparent 100%);
+  }
+  .letra__lyrics { padding: var(--pt, 30vh) 0 var(--pb, 46vh); }
+  .letra[data-loading] .letra__scroller::before { margin-top: var(--pt, 30vh); }
+  .letra__line { margin-bottom: .36em; line-height: 1.2; }
+
+  /* Bar: no cover, no volume; seek line with its times, then the controls. */
+  .letra__bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 4px var(--pad) calc(16px + env(safe-area-inset-bottom, 0px));
+    background: transparent;
+  }
+  .letra__now,
+  .letra__tools,
   .letra .volume,
   .letra-btn--help { display: none; }
-  .letra__tools .letra-btn { width: 36px; height: 36px; }
-  .letra__ctrls { justify-content: space-between; width: 100%; max-width: 340px; }
-  .letra__back span { display: none; }
-  .letra__scroller { padding-top: 26vh; }
-  .letra__finish { padding: 18px 20px 16px; border-radius: 22px; }
-  .letra__finish { grid-template-columns: 1fr; grid-template-areas: "head" "stats" "actions"; gap: 12px; }
-  .letra__finish-actions { justify-content: flex-start; }
-  .letra__stats { gap: 8px 22px; }
-  .letra-pick__search { padding: 2px 16px; border-radius: 18px; }
+  .letra__transport { align-items: stretch; width: 100%; gap: 4px; }
+  .letra__seekrow {
+    order: -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    max-width: none;
+    font-size: .75rem;
+  }
+  .letra__seekrow[hidden] { display: none; }
+  /* 44 px to touch, drawn as a thin line: the extra reach overlaps the times. */
+  .letra__seek { grid-column: 1 / 3; grid-row: 1; width: 100%; height: 44px; margin: -8px 0 -14px; }
+  .letra__time { grid-row: 2; min-width: 0; }
+  .letra__time:first-child { grid-column: 1; text-align: left; }
+  .letra__time:last-child { grid-column: 2; text-align: right; }
+  .letra__seek::-webkit-slider-runnable-track { height: 4px; }
+  .letra__seek::-webkit-slider-thumb { opacity: 1; width: 14px; height: 14px; margin-top: -5px; }
+  .letra__ctrls { justify-content: space-between; width: 100%; max-width: none; margin-top: 2px; }
+  .letra-btn { width: 48px; height: 48px; }
+  .letra-btn .icon { width: 26px; height: 26px; }
+  .letra__play { width: 64px; height: 64px; margin: 0; }
+  .letra__play .icon { width: 30px; height: 30px; }
+  .letra__play.is-waiting .letra__spin { width: 26px; height: 26px; border-width: 3px; }
+  .letra__note { margin: 4px 0 2px; font-size: .875rem; }
+
+  /* Keyboard up: a thin header, one bar of tools right above the keys. */
+  .letra[data-kbd="1"] .letra__top {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 8px 6px;
+  }
+  .letra[data-kbd="1"] .letra__chev,
+  .letra[data-kbd="1"] .letra__more { width: 44px; height: 44px; }
+  .letra[data-kbd="1"] .letra__ptitle-a { display: none; }
+  .letra[data-kbd="1"] .letra__ptitle-t { font-size: .9375rem; }
+  .letra[data-kbd="1"] .letra__streak { top: calc(100% + 2px); font-size: .75rem; }
+  .letra[data-kbd="1"] .letra__bar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background: var(--song-deep);
+  }
+  .letra[data-kbd="1"] .letra__tools { display: flex; flex: none; order: -1; }
+  .letra[data-kbd="1"] .letra__tools-btns { gap: 0; }
+  .letra[data-kbd="1"] .letra-btn--giveup { display: none; }
+  .letra[data-kbd="1"] .letra__transport { flex: none; width: auto; }
+  .letra[data-kbd="1"] .letra__seekrow,
+  .letra[data-kbd="1"] .letra__note { display: none; }
+  .letra[data-kbd="1"] .letra__ctrls { width: auto; gap: 4px; margin: 0; }
+  .letra[data-kbd="1"] .letra-btn--shuffle,
+  .letra[data-kbd="1"] .letra-btn--prev,
+  .letra[data-kbd="1"] .letra-btn--repeat { display: none; }
+  .letra[data-kbd="1"] .letra__play { width: 48px; height: 48px; }
+  .letra[data-kbd="1"] .letra__play .icon { width: 24px; height: 24px; }
+  .letra[data-kbd="1"] .letra-btn { width: 46px; height: 46px; }
+
+  /* Finish: a sheet that grows out of the bar, above whatever keyboard. */
+  .letra__invite { bottom: calc(var(--bar-h) + 12px); white-space: nowrap; }
+  .letra.is-done .letra__invite { display: none; }
+  .letra.is-done .letra__bar { background: var(--song-deep); }
+  .letra__finish {
+    left: 0;
+    right: 0;
+    bottom: var(--bar-h);
+    width: auto;
+    padding: 22px var(--pad) 18px;
+    border-radius: 26px 26px 0 0;
+    box-shadow: 0 -18px 50px -14px rgb(0 0 0 / .5);
+    transform: none;
+    grid-template-columns: 1fr;
+    grid-template-areas: "head" "stats" "actions";
+    gap: 16px;
+  }
+  .letra__finish.is-rise { animation: letra-sheet-rise 320ms var(--ease-pop); }
+  .letra__stats { gap: 12px 26px; }
+  .letra__finish-actions { display: grid; grid-template-columns: 1fr; justify-content: stretch; gap: 4px; }
+  .letra__cta { min-height: 52px; font-size: 1rem; }
+  .letra__quiet { min-height: 48px; }
+
+  /* Picker */
+  .letra__screen { padding: calc(6px + env(safe-area-inset-top, 0px)) var(--pad) calc(56px + env(safe-area-inset-bottom, 0px)); }
+  .letra-pick__back { min-height: 48px; padding: 8px 16px 8px 4px; }
+  .letra-pick__title { margin: .2rem 0 1rem; }
+  .letra-pick__search { gap: 12px; height: 56px; padding: 0 16px; border-radius: 16px; }
   .letra-pick__search .icon { width: 22px; height: 22px; }
+  .letra-pick__input { padding: 0; font-size: 1.0625rem; }
+  .letra-pick__h { margin: 2rem 0 .9rem; font-size: 1.375rem; }
+  .letra-rows { margin: 0 -8px; }
+  .letra-row { min-height: 64px; padding: 6px 8px; gap: 14px; }
+  .letra-row__cover { width: 52px; height: 52px; }
+  .letra-row__title { font-size: 1.0625rem; }
+  .letra-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 16px; }
+  .letra-tile__cover { margin-bottom: 6px; border-radius: 10px; }
+  .letra-tile__name { font-size: 1rem; }
+  .letra-pick__quiet { display: block; margin-top: 2.5rem; padding: 12px 0; }
+
+  dialog.letra-dialog {
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    padding: 24px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+    border-radius: 26px 26px 0 0;
+    box-shadow: 0 -1px 0 rgb(255 255 255 / .1), 0 -24px 60px -16px rgb(0 0 0 / .6);
+  }
+  .letra-dialog__actions { display: grid; grid-template-columns: 1fr; gap: 4px; }
+  dialog.letra-dialog .letra__cta { min-height: 52px; }
+  dialog.letra-dialog .letra__quiet { min-height: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

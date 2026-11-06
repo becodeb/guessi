@@ -7,6 +7,9 @@ import { getLyrics } from "../lyrics.js";
 import { parseLyrics } from "../lyrics-parse.js";
 import { createTypingGame } from "../lyrics-typing.js";
 import { createInputFeed, feedInput } from "../typing-input.js";
+import {
+  createViewportTracker, scrollTarget, anchorFor, scrollPadding,
+} from "../letra-layout.js";
 import { createQueue } from "../lyrics-queue.js";
 import { enrichForms } from "../lyrics-ai.js";
 import {
@@ -16,7 +19,7 @@ import { artistNames } from "../clip-guess.js";
 import { mountPicker, pickImage } from "./letra-picker.js";
 
 const MIN_WORDS = 6; // fewer typeable words than this is not a lyric worth playing
-const SCROLL_ANCHOR = 0.38; // the cursor line is held this far from the top of the scroller
+const PHONE_QUERY = "(max-width: 720px)";
 const STREAK_SHOWN_FROM = 5;
 const TYPING_IDLE_MS = 700;
 const SAMPLE_TIMEOUT_MS = 4000;
@@ -43,6 +46,10 @@ function playOnce(node, className) {
   void node.offsetWidth;
   node.classList.add(className);
   node.addEventListener("animationend", () => node.classList.remove(className), { once: true });
+}
+
+function isPhoneLayout() {
+  return typeof matchMedia === "function" && matchMedia(PHONE_QUERY).matches;
 }
 
 function coverOf(track) {
@@ -74,7 +81,12 @@ export function mount(container, ctx) {
     rafId: 0,
     offs: [],
     dialog: null,
+    sheet: null,
+    tracker: createViewportTracker(),
+    themeMeta: document.querySelector('meta[name="theme-color"]'),
+    themeWas: null,
   };
+  handle.themeWas = handle.themeMeta?.getAttribute("content") ?? null;
   setFlood(DEFAULT_FLOOD);
   handle.offs.push(
     ctx.player.onPlayback(onPlayback),
@@ -106,6 +118,8 @@ export function unmount() {
   for (const entry of h.entries.values()) entry.ctrl?.abort();
   h.picker?.destroy();
   h.dialog?.close();
+  h.sheet?.close();
+  if (h.themeMeta && h.themeWas != null) h.themeMeta.setAttribute("content", h.themeWas);
   // Only if we ever started playback: stopFree sends no request, it pauses
   // the device and forgets ownership.
   if (h.touchedPlayback) h.ctx.player.stopFree();
@@ -115,9 +129,11 @@ export function unmount() {
 }
 
 function setFlood(hex) {
-  const { root } = handle;
+  const { root, themeMeta } = handle;
   root.style.setProperty("--song", hex);
   root.style.setProperty("--song-deep", mixBlack(hex));
+  // The browser's own bar takes the flood too, so the screen reaches its edges.
+  themeMeta?.setAttribute("content", hex);
 }
 
 function mixBlack(hex) {
@@ -135,14 +151,51 @@ function fitViewport() {
   if (!h || !vv) return;
   h.root.style.height = `${Math.round(vv.height)}px`;
   h.root.style.transform = `translateY(${Math.round(vv.offsetTop)}px)`;
+  // Only a finger raises an on-screen keyboard; a short desktop window is not one.
+  const kbd = isCoarse() && h.tracker.update(Math.round(vv.width), Math.round(vv.height));
+  if (kbd !== (h.root.dataset.kbd === "1")) {
+    h.root.dataset.kbd = kbd ? "1" : "0";
+    afterLayoutChange();
+  }
   measureBar();
 }
 
+/** The keyboard came or went: the cursor line must stay where the eye is. */
+function afterLayoutChange() {
+  const h = handle;
+  requestAnimationFrame(() => {
+    if (!h.alive || h !== handle) return;
+    measureBar();
+    const entry = h.cur;
+    if (entry?.state === "ready" && h.view) scrollToCursor(entry, false);
+  });
+}
+
 function measureBar() {
-  const bar = handle?.view?.bar;
+  const h = handle;
+  const bar = h?.view?.bar;
   if (!bar) return;
   document.body.style.setProperty("--toast-offset-bottom", `${bar.offsetHeight + 20}px`);
-  handle.root.style.setProperty("--bar-h", `${bar.offsetHeight}px`);
+  h.root.style.setProperty("--bar-h", `${bar.offsetHeight}px`);
+  fitScroller();
+}
+
+/**
+ * On a phone the lyrics scroller's padding follows the room that is left (it
+ * shrinks a lot when the keyboard is up); elsewhere the stylesheet decides.
+ */
+function fitScroller() {
+  const h = handle;
+  const sc = h?.view?.scroller;
+  if (!sc) return;
+  if (!isPhoneLayout()) {
+    sc.style.removeProperty("--pt");
+    sc.style.removeProperty("--pb");
+    return;
+  }
+  const { top, bottom } = scrollPadding(sc.clientHeight, anchorFor(true));
+  sc.style.setProperty("--pt", `${top}px`);
+  sc.style.setProperty("--pb", `${bottom}px`);
 }
 
 // --- picker -------------------------------------------------------------------
@@ -163,6 +216,7 @@ function showPicker(message) {
 
 function teardownPlay() {
   const h = handle;
+  h.sheet?.close();
   cancelAnimationFrame(h.rafId);
   h.rafId = 0;
   for (const entry of h.entries.values()) entry.ctrl?.abort();
@@ -438,11 +492,23 @@ function buildPlayView() {
     class: "letra__back", type: "button", "aria-label": "Elegir otra canción",
     on: { click: () => showPicker() },
   }, ui.icon("back"), ui.el("span", { text: "Elegir otra" }));
+  // Phone header: chevron, song and artists centered, more.
+  const chev = ui.el("button", {
+    class: "letra__chev", type: "button", "aria-label": "Elegir otra canción", title: "Elegir otra canción",
+    on: { click: () => showPicker() },
+  }, ui.icon("chevron-down"));
+  const ptitle = ui.el("span", { class: "letra__ptitle-t" });
+  const partist = ui.el("span", { class: "letra__ptitle-a" });
+  const phead = ui.el("div", { class: "letra__ptitle" }, ptitle, partist);
+  const more = ui.el("button", {
+    class: "letra__more", type: "button", "aria-label": "Más opciones", title: "Más opciones",
+    "aria-haspopup": "dialog", on: { click: () => openSheet() },
+  }, ui.icon("more"));
   const streak = ui.el("span", { class: "letra__streak", hidden: true });
   const count = ui.el("span", { class: "letra__count" });
   const progFill = ui.el("i");
   const prog = ui.el("span", { class: "letra__prog", "aria-hidden": "true" }, progFill);
-  const top = ui.el("header", { class: "letra__top" }, back,
+  const top = ui.el("header", { class: "letra__top" }, back, chev, phead, more,
     ui.el("div", { class: "letra__top-right" }, streak, count, prog));
 
   const lyrics = ui.el("div", { class: "letra__lyrics" });
@@ -472,14 +538,14 @@ function buildPlayView() {
   const artist = ui.el("span", { class: "letra__artist" });
   const now = ui.el("div", { class: "letra__now" }, coverImg, ui.el("div", { class: "letra__meta" }, title, artist));
 
-  const shuffle = iconButton("shuffle", "Aleatorio", () => toggleShuffle(), "letra-btn--toggle");
-  const prev = iconButton("prev", "Canción anterior", () => go(-1));
+  const shuffle = iconButton("shuffle", "Aleatorio", () => toggleShuffle(), "letra-btn--toggle letra-btn--shuffle");
+  const prev = iconButton("prev", "Canción anterior", () => go(-1), "letra-btn--prev");
   const play = ui.el("button", {
     class: "letra__play", type: "button", "aria-label": "Reproducir", title: "Reproducir (Ctrl + Espacio)",
     on: { click: () => togglePlay() },
   }, ui.icon("play-solid", "letra__play-icon"), ui.el("span", { class: "letra__spin", "aria-hidden": "true" }));
   const next = iconButton("next", "Canción siguiente", () => go(+1));
-  const repeat = iconButton("repeat", "Repetir canción", () => toggleRepeat(), "letra-btn--toggle");
+  const repeat = iconButton("repeat", "Repetir canción", () => toggleRepeat(), "letra-btn--toggle letra-btn--repeat");
   const ctrls = ui.el("div", { class: "letra__ctrls" }, shuffle, prev, play, next, repeat);
 
   const elapsed = ui.el("span", { class: "letra__time", text: "0:00" });
@@ -497,7 +563,7 @@ function buildPlayView() {
   const hint = iconButton("hint", "Pista (Intro)", () => doHint());
   const revealLine = iconButton("reveal-line", "Revelar la línea (Mayús + Intro)", () => doRevealLine());
   const listen = iconButton("headphones", "Escuchar esta línea (Ctrl + Intro)", () => listenFromLine());
-  const giveUp = iconButton("eye", "Ver toda la letra", () => confirmGiveUp());
+  const giveUp = iconButton("eye", "Ver toda la letra", () => confirmGiveUp(), "letra-btn--giveup");
   const help = iconButton("help", "Atajos de teclado", () => showHelp(), "letra-btn--help");
   const volume = ui.volumeControl(ctx);
   const volumeRange = volume.querySelector("input[type=range]");
@@ -510,7 +576,7 @@ function buildPlayView() {
   const bar = ui.el("footer", { class: "letra__bar" }, now, transport, tools);
   // A mouse click on a button hands the keyboard back to the hidden field, so
   // the next letter is typed instead of re-activating the button.
-  for (const zone of [bar, top, finish]) {
+  for (const zone of [bar, top, finish, invite]) {
     keepFocus(zone);
     zone.addEventListener("click", (e) => {
       if (e.detail > 0 && e.target.closest("button")) requestAnimationFrame(refocus);
@@ -521,7 +587,7 @@ function buildPlayView() {
   h.root.dataset.mode = "play";
   h.root.replaceChildren(top, scroller, invite, finish, bar, input, live);
   h.view = {
-    root: h.root, input, invite, feed: createInputFeed(), composing: false, top, back, streak, count, progFill, scroller, lyrics, finish, bar, coverImg, title, artist,
+    root: h.root, input, invite, feed: createInputFeed(), composing: false, top, back, chev, more, ptitle, partist, streak, count, progFill, scroller, lyrics, finish, bar, coverImg, title, artist,
     shuffle, prev, play, next, repeat, elapsed, total, seek, seekRow, note, hint, revealLine, listen, giveUp, volume, live,
     typingTimer: 0, seeking: false, scrolledAway: false, lastClock: "",
   };
@@ -542,7 +608,7 @@ function keepFocus(zone) {
     const h = handle;
     if (!h?.view) return;
     const t = e.target;
-    if (t.closest?.("button, a")) {
+    if (t.closest?.("button, a, .letra-sheet__scrim")) {
       e.preventDefault();
     } else if (t.closest?.("input[type=range]")) {
       h.restoreKeyboard = document.activeElement === h.view.input;
@@ -573,6 +639,9 @@ function paintNow(entry) {
   }
   v.title.textContent = entry.track.name;
   v.artist.textContent = artistNames(entry.track).join(", ");
+  v.ptitle.textContent = entry.track.name;
+  v.partist.textContent = artistNames(entry.track).join(", ");
+  v.root.classList.remove("is-done");
   v.finish.hidden = true;
   v.lyrics.replaceChildren();
   v.streak.hidden = true;
@@ -741,8 +810,17 @@ function scrollToCursor(entry, smooth = true) {
   const v = handle.view;
   const line = entry.lineEls[entry.curLine >= 0 ? entry.curLine : entry.sungLine];
   if (!line) return;
-  const target = line.offsetTop + line.offsetHeight / 2 - v.scroller.clientHeight * SCROLL_ANCHOR;
-  v.scroller.scrollTo({ top: Math.max(0, target), behavior: smooth && !reducedMotion() ? "smooth" : "auto" });
+  const phone = isPhoneLayout();
+  // Lines wrap to two or three rows on a phone: hold the row the cursor is on,
+  // not the middle of the whole line.
+  const word = phone && entry.cursor >= 0 ? entry.slots[entry.cursor]?.w : null;
+  const target = scrollTarget({
+    lineTop: line.offsetTop + (word ? word.offsetTop : 0),
+    lineHeight: word ? word.offsetHeight : line.offsetHeight,
+    viewHeight: v.scroller.clientHeight,
+    anchor: anchorFor(phone),
+  });
+  v.scroller.scrollTo({ top: target, behavior: smooth && !reducedMotion() ? "smooth" : "auto" });
 }
 
 // --- typing -------------------------------------------------------------------
@@ -880,7 +958,10 @@ function onLyricsClick(e) {
   const slot = e.target.closest?.(".letra__w");
   if (slot) {
     const entry = readyEntry();
-    if (entry) afterEngine(entry, entry.game.moveCursor(Number(slot.dataset.i)));
+    const i = Number(slot.dataset.i);
+    // Tapping the word being typed is how a phone brings its keyboard back;
+    // moving to it would throw away the letters already written.
+    if (entry && !(isCoarse() && i === entry.game.cursor())) afterEngine(entry, entry.game.moveCursor(i));
   }
   const input = h.view.input;
   // Android keeps the field focused after the keyboard is dismissed with the
@@ -1275,9 +1356,63 @@ function showFinish(entry) {
     ui.el("div", { class: "letra__finish-actions" }, nextBtn, otherBtn),
   );
   v.finish.hidden = false;
+  v.root.classList.add("is-done");
+  // Nothing is left to type: a phone's keyboard makes way for the summary.
+  if (isCoarse() && document.activeElement === v.input) v.input.blur();
   playOnce(v.finish, "is-rise");
   v.live.textContent = `Letra terminada: ${st.pct} por ciento.`;
   measureBar();
+}
+
+// --- the more sheet (phone) ---------------------------------------------------
+
+/**
+ * A bottom sheet in the page itself, not a modal dialog: opening it must not
+ * steal focus, or the keyboard would drop. Holds what the thin phone bar has
+ * no room for: pista, revelar línea, escuchar esta línea, ver toda la letra.
+ */
+function openSheet() {
+  const h = handle;
+  if (!h?.view || h.sheet) return;
+  const entry = readyEntry();
+  const q = h.queue;
+  const issue = audioIssue();
+  const timed = Boolean(entry && entry.timeline.length > 0);
+  const done = Boolean(entry?.game.isDone());
+  const item = (icon, label, run, off = false) => ui.el("button", {
+    class: "letra-sheet__item", type: "button", disabled: off,
+    on: { click: () => { close(); run(); } },
+  }, ui.icon(icon), ui.el("span", { text: label }));
+  const close = () => {
+    if (h.sheet !== api) return;
+    h.sheet = null;
+    scrim.remove();
+    panel.remove();
+    h.view.more.setAttribute("aria-expanded", "false");
+    document.removeEventListener("keydown", onKey, true);
+    refocus();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+  };
+  const scrim = ui.el("div", { class: "letra-sheet__scrim", on: { click: () => close() } });
+  keepFocus(scrim);
+  const panel = ui.el("div", {
+    class: "letra-sheet", role: "dialog", "aria-label": "Más opciones",
+  },
+    ui.el("span", { class: "letra-sheet__grip", "aria-hidden": "true" }),
+    q.size() > 1 ? ui.el("p", { class: "letra-sheet__meta", text: `Canción ${q.index() + 1} de ${q.size()}` }) : null,
+    item("hint", "Pista", () => doHint(), done),
+    item("reveal-line", "Revelar la línea", () => doRevealLine(), done),
+    item("headphones", "Escuchar esta línea", () => listenFromLine(), Boolean(issue) || !timed || done),
+    item("eye", "Ver toda la letra", () => confirmGiveUp(), done),
+  );
+  keepFocus(panel);
+  const api = { close };
+  h.sheet = api;
+  h.root.append(scrim, panel);
+  h.view.more.setAttribute("aria-expanded", "true");
+  document.addEventListener("keydown", onKey, true);
 }
 
 // --- dialogs ------------------------------------------------------------------

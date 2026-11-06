@@ -8,6 +8,8 @@ export const DEFAULT_FLOOD = "#12304a";
 /** Contrast ratio the flood must give to white text at TEXT_ALPHA. */
 export const MIN_CONTRAST = 4.5;
 const TEXT_ALPHA = 0.78;
+/** Lines other than the current one are this much white over the flood. */
+export const TINT = 0.62;
 
 export function rgbToHsl(r, g, b) {
   const rn = r / 255, gn = g / 255, bn = b / 255;
@@ -62,9 +64,21 @@ export function whiteContrast(bg, alpha = 1) {
   return (luminance(mixed) + 0.05) / (luminance(bg) + 0.05);
 }
 
+/** The pale tint of a flood the lyrics are drawn in: TINT white over it. */
+export function tintOf(bg) {
+  return bg.map((v) => Math.round(255 * TINT + v * (1 - TINT)));
+}
+
+/** WCAG contrast of the lyric tint over the flood `bg`. */
+export function tintContrast(bg) {
+  const tint = tintOf(bg);
+  return (luminance(tint) + 0.05) / (luminance(bg) + 0.05);
+}
+
 /**
  * The flood for a cover color: saturation at least 45 %, lightness 20-30 %,
- * then darkened further until 78 %-white text reaches MIN_CONTRAST.
+ * then darkened further until 78 %-white text and the pale lyric tint both
+ * reach MIN_CONTRAST.
  * @returns {string} #rrggbb
  */
 export function floodFromRgb(r, g, b) {
@@ -72,7 +86,7 @@ export function floodFromRgb(r, g, b) {
   const s = Math.min(0.85, Math.max(0.45, hsl.s));
   let l = Math.min(0.3, Math.max(0.2, hsl.l));
   let rgb = hslToRgb(hsl.h, s, l);
-  while (whiteContrast(rgb, TEXT_ALPHA) < MIN_CONTRAST && l > 0.08) {
+  while ((whiteContrast(rgb, TEXT_ALPHA) < MIN_CONTRAST || tintContrast(rgb) < MIN_CONTRAST) && l > 0.08) {
     l -= 0.01;
     rgb = hslToRgb(hsl.h, s, l);
   }

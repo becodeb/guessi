@@ -65,7 +65,10 @@ export function mountPicker(host, { ctx, onStart }) {
     autocapitalize: "off",
     spellcheck: "false",
     enterkeyhint: "search",
-    placeholder: "Busca una canción o pega un enlace de Spotify",
+    // The long wording does not fit a phone's field; the label keeps it whole.
+    placeholder: typeof matchMedia === "function" && matchMedia("(max-width: 720px)").matches
+      ? "Busca una canción o enlace"
+      : "Busca una canción o pega un enlace de Spotify",
     "aria-label": "Busca una canción o pega un enlace de Spotify",
   });
   const message = ui.el("p", { class: "letra-pick__msg", role: "status", "aria-live": "polite" });
