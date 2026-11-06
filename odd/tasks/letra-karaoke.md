@@ -279,9 +279,9 @@ lyrics screen as inspiration only. Their phone is Android. Spotify docs say the 
 supports mobile with autoplay and iOS limits; community reports say some phones stay
 silent, and this cannot be tested here, hence the fallback.
 
-- [ ] T6 Reliable typing with on-screen keyboards. Route: delegated.
-- [ ] T7 Phone layout. Route: delegated.
-- [ ] T8 Sound on phones: SDK first, Spotify app fallback. Route: delegated.
+- [x] T6 Reliable typing with on-screen keyboards. Route: delegated.
+- [x] T7 Phone layout. Route: delegated.
+- [x] T8 Sound on phones: SDK first, Spotify app fallback. Route: delegated.
 
 ### T6 spec
 
@@ -367,6 +367,12 @@ lines not reached show only underlines. The spec's "filler always visible" no lo
 
 Pending, needs the user's account: real Spotify SDK, real audio, confirmation that
 background playback is not interrupted, real phone keyboard.
+
+Phone round, on stubs and emulated touch: CDP IME typing without duplicated letters,
+0 player requests before play in every mode, all fallback branches, no horizontal
+scroll at 360. Parent read the phone screenshots and reran `npm test`. Deviations are
+in commits 21e5bfe to effffce. Pending on a real phone: Gboard, real keyboard height,
+SDK sound, Spotify app fallback, whether Enter keeps the keyboard up.
 
 ## Next step
 
