@@ -379,6 +379,7 @@ export async function playTrack(uri, { positionMs = 0 } = {}) {
       notifyPremium();
       return { ok: false, reason: "premium" };
     }
+    console.warn("Spotify rejected play:", err?.status, err?.message, { uri, positionMs });
     return { ok: false, reason: "error" };
   }
   if (my !== state.playSeq) {
