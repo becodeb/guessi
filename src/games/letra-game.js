@@ -564,11 +564,13 @@ function renderLyrics(entry) {
         entry.slots[tok.wordIndex] = slot;
         p.append(slot.w);
       } else {
+        // Fillers and backing vocals wait for the cursor the same way, so lines
+        // not reached yet show nothing but underlines.
         const node = ui.el("span", {
-          class: tok.kind === "filler" ? "letra__fill" : "letra__back-tok",
+          class: "letra__back-tok",
           text: `${tok.pre ?? ""}${tok.text}${tok.post ?? ""}`,
         });
-        if (tok.kind === "backing") entry.backs[l].push({ node, t });
+        entry.backs[l].push({ node, t });
         p.append(node);
       }
     });
