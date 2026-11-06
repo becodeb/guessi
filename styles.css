@@ -4529,7 +4529,7 @@ body[data-immersive] .toast {
 .letra__core > * { grid-area: 1 / 1; }
 .letra__ghost { color: transparent; }
 .letra__typed { color: #fff; }
-.letra__typed.is-hint { color: rgb(255 255 255 / .55); }
+.letra__hint { color: rgb(255 255 255 / .55); }
 .letra__w:not(.is-on) .letra__p { visibility: hidden; }
 .letra__w.is-on .letra__ghost { color: inherit; }
 

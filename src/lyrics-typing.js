@@ -5,6 +5,10 @@
 // `game.buffer()` back into the input when it differs. The engine only ever
 // compares the new value with its own buffer, so characters it swallowed
 // (the tail) never come back.
+//
+// Hint letters are a locked prefix of the word: they live outside the buffer,
+// so they can't be erased, and what the player typed is always judged as
+// hint + buffer. Retyping a hint letter confirms it instead of doubling it.
 
 import {
   acceptsWord, fuzzyAccepts, holdsWord, plain, mapHomoglyphs,
@@ -27,6 +31,7 @@ export function createTypingGame(parsed) {
   const revealed = new Array(total).fill(false);
   const how = new Array(total).fill(null); // typed|hint|line|repeat|giveup
   const hints = new Array(total).fill(0);
+  const confirmed = new Array(total).fill(0); // hint letters the player retyped
   const lineWords = lines.map(() => []);
   words.forEach((w, i) => lineWords[w.line]?.push(i));
 
@@ -108,6 +113,27 @@ export function createTypingGame(parsed) {
     }
   }
 
+  // --- hints ----------------------------------------------------------------
+
+  const isLetter = (ch) => /[\p{L}\p{N}]/u.test(ch);
+
+  /** The word as written, up to and including its `n`th letter. */
+  function hintPrefix(i, n) {
+    let out = "";
+    let seen = 0;
+    if (n <= 0) return out;
+    for (const ch of words[i]?.text ?? "") {
+      if (seen >= n) break;
+      if (isLetter(ch)) seen++;
+      out += ch;
+    }
+    return out;
+  }
+
+  // Everything the current word holds so far: locked hint letters + buffer.
+  const fullTyped = (i, buffer) => hintPrefix(i, hints[i]) + buffer;
+  const modeFor = (i) => (hints[i] > 0 ? "hint" : "typed");
+
   // --- typing ---------------------------------------------------------------
 
   function continuesTail(cand) {
@@ -132,15 +158,16 @@ export function createTypingGame(parsed) {
   function autoReveal(events) {
     if (isDone() || state.cursor < 0) return false;
     const w = words[state.cursor];
-    if (!acceptsWord(w, state.buffer)) return false;
+    const full = fullTyped(state.cursor, state.buffer);
+    if (!acceptsWord(w, full)) return false;
     // A phonetic-only match that is still growing into a longer form waits
     // (`par` collides with the key of `pa'l`, but the player is typing `para`).
-    const p = plain(state.buffer);
+    const p = plain(full);
     if (!w.forms.has(p) && growsIntoForm(w, p)) return false;
     const index = state.cursor;
-    const typed = plain(state.buffer);
+    const typed = p;
     state.buffer = "";
-    reveal(index, "typed", events);
+    reveal(index, modeFor(index), events);
     state.tail = { index, typed, swallowed: "" };
     return true;
   }
@@ -169,6 +196,17 @@ export function createTypingGame(parsed) {
       for (const ch of pending) pushChar(ch, events);
       return;
     }
+    // Retyping the next locked hint letter confirms it, so a player who types
+    // the whole word from the start doesn't end up with the letter twice.
+    const i = state.cursor;
+    if (state.buffer === "" && i >= 0 && confirmed[i] < hints[i]) {
+      const next = [...words[i].text].filter(isLetter)[confirmed[i]];
+      if (next !== undefined && plain(next) === plain(c)) {
+        confirmed[i]++;
+        autoReveal(events);
+        return;
+      }
+    }
     state.buffer += c;
     autoReveal(events);
   }
@@ -182,18 +220,20 @@ export function createTypingGame(parsed) {
     }
     const w = words[state.cursor];
     const index = state.cursor;
-    if (acceptsWord(w, b)) {
+    const full = fullTyped(index, b);
+    if (acceptsWord(w, full)) {
       state.buffer = "";
-      reveal(index, "typed", events);
-    } else if (holdsWord(w, b)) {
+      reveal(index, modeFor(index), events);
+    } else if (holdsWord(w, full)) {
       // Before the fuzzy check: `para` is one slip away from `paral`.
       state.buffer = `${b} `;
       events.push({ type: "hold", index });
-    } else if (fuzzyAccepts(w, b)) {
+    } else if (fuzzyAccepts(w, full)) {
       state.buffer = "";
-      reveal(index, "typed", events);
+      reveal(index, modeFor(index), events);
     } else {
       state.buffer = "";
+      confirmed[index] = 0;
       state.streak = 0;
       state.misses++;
       events.push({ type: "miss", index });
@@ -253,7 +293,16 @@ export function createTypingGame(parsed) {
       const i = state.cursor;
       state.tail = null;
       const len = [...plain(words[i].text)].length;
-      hints[i]++;
+      // Letters typed correctly so far count as given; anything wrong is cleared.
+      const typedSoFar = plain(state.buffer);
+      if (typedSoFar && plain(words[i].text).startsWith(plain(fullTyped(i, state.buffer)))) {
+        hints[i] += [...typedSoFar].length + 1;
+        confirmed[i] = hints[i] - 1;
+      } else {
+        hints[i]++;
+      }
+      state.buffer = "";
+      state.streak = 0;
       const events = [];
       if (hints[i] >= len) {
         state.buffer = "";
@@ -284,6 +333,7 @@ export function createTypingGame(parsed) {
     moveCursor(i) {
       if (!Number.isInteger(i) || i < 0 || i >= total || revealed[i]) return [];
       state.cursor = i;
+      if (state.cursor >= 0) confirmed[state.cursor] = 0;
       state.buffer = "";
       state.tail = null;
       return [{ type: "typing" }];
@@ -292,6 +342,7 @@ export function createTypingGame(parsed) {
     nextWord() {
       if (isDone()) return [];
       state.cursor = nextUnrevealed(state.cursor + 1);
+      if (state.cursor >= 0) confirmed[state.cursor] = 0;
       state.buffer = "";
       state.tail = null;
       return [{ type: "typing" }];
@@ -300,6 +351,7 @@ export function createTypingGame(parsed) {
     prevWord() {
       if (isDone()) return [];
       state.cursor = nextUnrevealed(state.cursor - 1, -1);
+      if (state.cursor >= 0) confirmed[state.cursor] = 0;
       state.buffer = "";
       state.tail = null;
       return [{ type: "typing" }];
@@ -351,16 +403,12 @@ export function createTypingGame(parsed) {
     howRevealed: (i) => how[i] ?? null,
     hintLevel: (i) => hints[i] ?? 0,
     /** First `hintLevel` letters of the word, as written. */
-    hintText(i) {
-      const n = hints[i] ?? 0;
-      let out = "";
-      let seen = 0;
-      for (const ch of words[i]?.text ?? "") {
-        if (seen >= n) break;
-        if (/[\p{L}\p{N}]/u.test(ch)) seen++;
-        out += ch;
-      }
-      return out;
+    hintText: (i) => hintPrefix(i, hints[i] ?? 0),
+    /** The hint split for display: letters the player retyped, and the rest. */
+    hintParts(i) {
+      const text = hintPrefix(i, hints[i] ?? 0);
+      const done = hintPrefix(i, confirmed[i] ?? 0);
+      return { done, locked: text.slice(done.length) };
     },
     /** Index of the current word, or -1 when the song is complete. */
     cursor: () => state.cursor,

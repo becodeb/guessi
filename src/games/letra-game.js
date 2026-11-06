@@ -626,11 +626,15 @@ function paintSlot(entry, i, animate) {
     return;
   }
   const buf = cur ? g.buffer() : "";
-  const text = buf || g.hintText(i);
+  const { done, locked } = g.hintParts(i);
+  const text = done || locked || buf ? `${done}|${locked}|${buf}` : "";
   if (text !== s.text) {
     s.text = text;
-    s.typed.textContent = text;
-    s.typed.classList.toggle("is-hint", !buf);
+    s.typed.replaceChildren(
+      done,
+      locked ? ui.el("span", { class: "letra__hint", text: locked }) : "",
+      buf,
+    );
   }
 }
 

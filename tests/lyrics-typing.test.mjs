@@ -449,6 +449,54 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   check("urban spelling variants share a signature", g.isRevealed(2), true);
 }
 
+// --- locked hint letters --------------------------------------------------------------
+{
+  const pick = () => game("dale fuerte");
+  let g = pick();
+  g.hint();
+  check("locked hint: typing the rest finishes the word", (g.type("ale"), g.isRevealed(0)), true);
+  check("locked hint: a word finished with help is not typed", g.howRevealed(0), "hint");
+
+  g = pick();
+  g.hint();
+  g.type("d");
+  check("locked hint: retyping the letter doesn't double it", g.buffer(), "");
+  check("locked hint: retyped letter is confirmed", g.hintParts(0).done, "d");
+  g.type("ale");
+  check("locked hint: the whole word typed from the start works", g.isRevealed(0), true);
+
+  g = pick();
+  g.hint();
+  g.type("dx");
+  check("locked hint: other letters go after it", g.buffer(), "x");
+  g.setBuffer("");
+  g.setBuffer("");
+  check("locked hint: erasing never removes the letter", g.hintText(0), "d");
+  check("locked hint: buffer is really empty", g.buffer(), "");
+  g.type("ale");
+  check("locked hint: still completes after erasing", g.isRevealed(0), true);
+
+  g = pick();
+  g.hint();
+  g.type("zz");
+  g.commit();
+  check("locked hint: a miss keeps the hint", g.hintText(0), "d");
+  g.type("dale");
+  check("locked hint: full retype works after a miss", g.isRevealed(0), true);
+
+  g = pick();
+  g.type("da");
+  g.hint();
+  check("hint after correct letters extends them", g.hintText(0), "dal");
+  check("hint after correct letters clears the buffer", g.buffer(), "");
+
+  g = pick();
+  g.type("xx");
+  g.hint();
+  check("hint after wrong letters clears them", g.buffer(), "");
+  check("hint after wrong letters gives the first letter", g.hintText(0), "d");
+}
+
 // --- hints, line reveal, navigation, give up --------------------------------------------------------------
 
 {
