@@ -69,6 +69,10 @@ const st = (over = {}) => ({
     track_window: { current_track: { uri: "spotify:track:a" }, previous_tracks: [{ uri: "spotify:track:a" }] },
   }));
   check("describe: ended", ended.ended, true);
+  const relinked = player.describePlayback(st({
+    track_window: { current_track: { uri: "spotify:track:b", linked_from: { uri: "spotify:track:a" } }, previous_tracks: [] },
+  }));
+  check("describe: relinked track keeps the requested uri", relinked.uri, "spotify:track:a");
   const fresh = player.describePlayback(st({ paused: true, position: 0 }));
   check("describe: paused at 0 without previous is not ended", fresh.ended, false);
 }

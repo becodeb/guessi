@@ -156,8 +156,11 @@ export function describePlayback(st, now = Date.now()) {
   if (!st) return { paused: true, position: 0, duration: 0, uri: null, ended: false, lost: true, at: now };
   const current = st.track_window?.current_track;
   const previous = st.track_window?.previous_tracks ?? [];
-  const uri = current?.uri ?? null;
-  const ended = Boolean(st.paused && (st.position ?? 0) === 0 && uri && previous.some((t) => t?.uri === uri));
+  // A track relinked for the user's market reports the uri that was asked for
+  // under `linked_from`; that is the one the game knows the song by.
+  const uriOf = (t) => t?.linked_from?.uri ?? t?.uri ?? null;
+  const uri = uriOf(current);
+  const ended = Boolean(st.paused && (st.position ?? 0) === 0 && uri && previous.some((t) => uriOf(t) === uri));
   return {
     paused: Boolean(st.paused),
     position: st.position ?? 0,
