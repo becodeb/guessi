@@ -271,6 +271,82 @@ by position, never trim; concat; stop at `[DONE]`; tolerant JSON extract (fence,
 outermost braces); one retry if unparseable. Failures are silent, the game never
 waits on it. Never expose it in the UI. Applies via `addForms`.
 
+
+## Phone round (2026-11-06)
+
+User asked that the game works and looks good on phones, using the Spotify Android
+lyrics screen as inspiration only. Their phone is Android. Spotify docs say the SDK
+supports mobile with autoplay and iOS limits; community reports say some phones stay
+silent, and this cannot be tested here, hence the fallback.
+
+- [ ] T6 Reliable typing with on-screen keyboards. Route: delegated.
+- [ ] T7 Phone layout. Route: delegated.
+- [ ] T8 Sound on phones: SDK first, Spotify app fallback. Route: delegated.
+
+### T6 spec
+
+Gboard and similar keep a composing region; writing `input.value` during composition
+duplicates or resurrects text. While composing, never write to the input: keep a
+`consumed` offset, feed the engine `value.slice(consumed)`, and after each engine call
+move the offset so the text fed equals `game.buffer()`. On `compositionend`, write
+`input.value = game.buffer()` and reset the offset. Outside composition keep today's
+contract. Handle deletion below the offset. Attributes: autocomplete, autocorrect,
+autocapitalize off; spellcheck false; enterkeyhint. Desktop dead-key accents must still
+work. Verify with CDP `Input.imeSetComposition` + `Input.insertText`, not just keyboard.type.
+
+Focus: a keyboard opens only from a tap. Tapping a lyric or slot focuses the input.
+Tapping a control must not open the keyboard or close it if open (`pointerdown`
+preventDefault). On touch, the first screen invites: "Toca la letra para escribir".
+Scrolling the lyrics by finger must not move the cursor; typing returns to the cursor.
+
+### T7 spec
+
+Scope: `(max-width: 720px)` for layout, `(pointer: coarse)` for touch behavior. Desktop
+must look exactly as it does now, except for the tint below.
+
+Without keyboard, top to bottom:
+- Header: chevron down (back to picker) left, song title and artists centered on 2
+  lines, more icon right opening a bottom sheet with pista, revelar línea, escuchar esta
+  línea, ver toda la letra and "n de m". Progress hairline under the header.
+- Lyrics, left aligned, 16-20px gutter, about 27-30px, weight 800, the current line white.
+- Seek line with times, then shuffle, prev, big round white play (64px), next, repeat.
+No cover, no volume (phone hardware), no shortcuts help on touch.
+
+With keyboard open, detected by `visualViewport.height` under 75% of the tallest height
+seen, set as a data attribute: header shrinks to a thin row; one bar directly above the
+keyboard holds pista, revelar línea, escuchar, then play and next; no seek. The cursor
+line stays visible in the remaining space, about 30% from the top. Streak stays small.
+
+All sizes: other lines become a pale tint of the song
+(`color-mix(in srgb, #fff 62%, var(--song))`), like Spotify's, instead of plain
+translucent white; check contrast stays above 4.5:1 on every fallback flood.
+Update `<meta name="theme-color">` to the flood while playing and restore on leave.
+`100dvh`, safe-area insets, 44px minimum targets, no horizontal scroll at 360px. Picker:
+check at 360 and 390; the search field and tiles must feel native. Finish panel becomes
+a bottom sheet and must never hide under the keyboard. Viewport meta gets
+`interactive-widget=resizes-content` if index.html lacks it.
+
+### T8 spec
+
+Additive in `src/player.js`. Desktop behavior must not change: the fallback runs only on
+`(pointer: coarse)`, and only after the user pressed play.
+
+1. Play tries the SDK as today, `activateElement` synchronous in the gesture.
+2. Fallback when the SDK has no device, the PUT fails with other than premium, or no
+   playing SDK state arrives within about 4 s of a successful PUT.
+3. Fallback: `GET /me/player/devices`; pure, tested `pickPhoneDevice(devices)` prefers an
+   active Smartphone, then any Smartphone, then any active device, skips restricted ones,
+   never the SDK's own. `PUT /me/player/play?device_id=` with uri and position.
+4. Remote mode: pause `PUT /me/player/pause?device_id=`, resume `PUT /me/player/play?device_id=`
+   with no body, seek `PUT /me/player/seek?position_ms=&device_id=`; poll `GET /me/player`
+   every 2 s only while audibly owning, and map it onto the same `onPlayback` payload.
+   Another device or another uri means `lost`. Stop polling on pause and on unmount.
+5. No device found: toast "Abre la app de Spotify en este celular y vuelve a tocar play."
+   Success: once per session, toast "Sonando en tu app de Spotify".
+6. Remote calls need no sync gesture. Don't retry in loops; a 404 from a device that went
+   away maps to the toast in 5.
+The session rule holds: zero player requests before the first play press, on phones too.
+
 ## Progress
 
 T1 to T4 are done, T5 is done on the fake player. Commits: 09c2407 (T1), e99b9ca (T2),
