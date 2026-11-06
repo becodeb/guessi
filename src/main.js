@@ -15,6 +15,7 @@ import * as albumGame from "./games/album-game.js";
 import * as yearGame from "./games/year-game.js";
 import * as roundGame from "./games/round-game.js";
 import * as lyricsGame from "./games/lyrics-game.js";
+import * as letraGame from "./games/letra-game.js";
 
 // --- app state (single source of truth) -------------------------------------
 
@@ -39,13 +40,14 @@ const ROUTES = {
   "/juegos/album": { view: "album", render: renderAlbum, game: albumGame },
   "/juegos/año": { view: "year", render: renderYear, game: yearGame },
   "/juegos/ronda": { view: "ronda", render: renderRonda, game: roundGame },
-  "/juegos/letra": { view: "letra", render: renderLetra, game: lyricsGame },
+  "/juegos/letra": { view: "letra", render: renderLetra, game: letraGame },
+  "/juegos/letra/contrarreloj": { view: "letra-contrarreloj", render: renderLetraTimed, game: lyricsGame },
 };
 
 // The five game views, each themed by styles.css's [data-game] selectors
 // (Ronda completa = pink, La primera décima = yellow, Portada borrosa =
 // orange, ¿De qué año? = cyan, Completa la letra = white).
-const GAME_VIEWS = new Set(["ronda", "clip", "album", "year", "letra"]);
+const GAME_VIEWS = new Set(["ronda", "clip", "album", "year", "letra", "letra-contrarreloj"]);
 
 const app = document.getElementById("app");
 let navHost = null;
@@ -131,7 +133,7 @@ function renderNav() {
       authed
         ? ui.el("div", { class: "nav__links" },
             navLink("#/library", "Biblioteca", active === "library"),
-            navLink("#/juegos", "Juegos", active === "hub" || active === "clip" || active === "album" || active === "year" || active === "ronda" || active === "letra"),
+            navLink("#/juegos", "Juegos", active === "hub" || active === "clip" || active === "album" || active === "year" || active === "ronda" || active === "letra" || active === "letra-contrarreloj"),
           )
         : null,
       ui.el("span", { class: "nav__spacer" }),
@@ -440,7 +442,7 @@ function renderHub(view) {
       game: "letra",
       paper: "white",
       title: "Completa la letra",
-      desc: "Contrarreloj con fragmentos y ayudas que cuestan puntos, o la canción entera a tu ritmo, sin límite de tiempo.",
+      desc: "Escribe la letra de una canción entera, palabra por palabra, mientras suena. También hay contrarreloj.",
     }),
   );
 
@@ -1493,6 +1495,14 @@ function renderRonda(view) {
 }
 
 function renderLetra(view) {
+  view.innerHTML = "";
+  // Connecting the SDK only registers a device: nothing plays, and nothing of
+  // the user's Spotify session is touched, until they press play in the game.
+  ensurePlayer();
+  letraGame.mount(view, ctx);
+}
+
+function renderLetraTimed(view) {
   view.innerHTML = "";
   // Only "Escuchar el fragmento" needs the player; the rest of the game works
   // without Premium, but priming it early means the help button is ready the
