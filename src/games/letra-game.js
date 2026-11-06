@@ -677,7 +677,7 @@ function renderLyrics(entry) {
   parsed.lines.forEach((line, l) => {
     const p = ui.el("p", { class: "letra__line", dataset: { l } });
     line.tokens.forEach((tok, t) => {
-      if (t > 0) p.append(" ");
+      if (t > 0 && !tok.glue) p.append(" ");
       if (tok.kind === "word") {
         const slot = buildSlot(tok);
         entry.slots[tok.wordIndex] = slot;

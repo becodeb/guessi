@@ -381,6 +381,11 @@ short form at once with no space (`pa` for `pa'`), or the full word (`para`), wh
 rest is swallowed. Never require a space. A leak of swallowed letters into the next word
 was seen by the user on their device and never reproduced in simulation.
 
+Accepted change from play testing: an apostrophe hiding two words is two slots rendered
+glued (`encima'e` = `encima` + `de` or `e`; also `salgo'el`, `vo'a`, `pa'l`, `to'l`, `pa'llá`,
+`pa'trá`, `pa'lante`). Words eaten from the inside stay one slot (`la'o`, `pasa'o`, `to's`,
+`a'lante`, English contractions). Replay of 53 real songs: 0 misses, 0 leaks.
+
 ## Next step
 
 The user plays and reports where they get stuck. Push and deploy are their decision.

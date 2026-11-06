@@ -430,8 +430,47 @@ function mergeSpacedLetters(items) {
   return out;
 }
 
+// An apostrophe inside a word usually hides two words (`encima'e` is `encima de`),
+// and the player thinks of them as two. Those become two slots that render glued
+// together, as the lyric writes them. Words only eaten from the inside stay whole:
+// `la'o` is `lado`, `pasa'o` is `pasado`, `to's` is `todos`, `i'm` is English.
+const SECOND_WORD = {
+  e: ["de"],
+  el: ["el", "del"],
+  l: ["el"],
+  a: ["a"],
+  alla: ["alla"],
+  lla: ["alla"],
+  aca: ["aca"],
+  ca: ["aca"],
+  tra: ["atras"],
+  lante: ["adelante", "alante"],
+};
+const FIRST_WORD = { vo: ["voy"] };
+
+function splitsInTwo(first, second) {
+  const a = plain(first);
+  const b = plain(second);
+  if (!(b in SECOND_WORD)) return false;
+  if (a === "pa") return true;
+  if (a === "to") return b === "l";
+  if (a === "vo") return b === "a";
+  return (b === "e" || b === "el") && a.length >= 2;
+}
+
+function splitElisions(items) {
+  return items.flatMap((item) => {
+    const m = item.back || item.spaced ? null : item.core.match(/^(\p{L}+)'(\p{L}+)$/u);
+    if (!m || !splitsInTwo(m[1], m[2])) return [item];
+    return [
+      { pre: item.pre, core: m[1], post: "", back: false, extra: FIRST_WORD[plain(m[1])] },
+      { pre: "'", core: m[2], post: item.post, back: false, extra: SECOND_WORD[plain(m[2])], glue: true },
+    ];
+  });
+}
+
 function makeWord(item) {
-  const fields = makeWordFields(item.spaced ? item.core.replace(/ /g, "") : item.core);
+  const fields = makeWordFields(item.spaced ? item.core.replace(/ /g, "") : item.core, item.extra);
   if (item.spaced) {
     const letters = item.core.split(" ");
     for (const h of holdsOf([letters.join(" ")])) fields.holds.add(h);
@@ -441,13 +480,14 @@ function makeWord(item) {
     text: item.core,
     pre: item.pre,
     post: item.post,
+    glue: Boolean(item.glue),
     wordIndex: -1,
     ...fields,
   };
 }
 
 function buildTokens(text) {
-  const items = mergeSpacedLetters(prepareChunks(text));
+  const items = splitElisions(mergeSpacedLetters(prepareChunks(text)));
   return items.map((item) => {
     if (item.back) return { kind: "backing", text: item.core, pre: item.pre, post: item.post };
     if (!item.spaced && isFillerText(item.core)) {

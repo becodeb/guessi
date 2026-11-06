@@ -2,7 +2,7 @@
 // Run with: node tests/lyrics-typing.test.mjs  (exit code 0 = all pass, non-zero = failure)
 // Every lyric line below is invented; only single contraction tokens are real-world.
 
-import { parseLyrics } from "../src/lyrics-parse.js";
+import { parseLyrics, addForms } from "../src/lyrics-parse.js";
 import { createTypingGame, sanitizeTyped } from "../src/lyrics-typing.js";
 
 let passed = 0;
@@ -205,56 +205,57 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   checkTrue("ases eso: done", g.isDone());
 }
 
-// --- multi-word forms: hold ------------------------------------------------------------
+// --- two words behind one apostrophe --------------------------------------------------
 
 {
-  const g = game("vo'a ir");
-  const ev1 = g.type("voy");
-  check("voy alone does not reveal", g.isRevealed(0), false);
-  const ev2 = g.setBuffer("voy ");
-  check("voy + space holds", types(ev2), "hold");
-  check("hold keeps the text", g.buffer(), "voy ");
+  const typed = (text, keys) => { const g = game(text); g.type(keys); return g; };
+  let g = typed("encima'e ti", "encima");
+  check("encima alone fills its slot", g.isRevealed(0), true);
+  check("encima: the cursor is on e", g.cursor(), 1);
+  check("encima: clean buffer", g.buffer(), "");
+  for (const rest of [" de ti", " e ti", "de ti", "e ti"]) {
+    g = typed("encima'e ti", `encima${rest}`);
+    check(`encima + ${JSON.stringify(rest)} finishes with no misses`, [g.isDone(), g.stats().misses].join(), "true,0");
+  }
+  for (const [text, keys] of [
+    ["salgo'el club", "salgo del club"], ["salgo'el club", "salgo el club"], ["salgo'el club", "salgoel club"],
+    ["vo'a ir", "voy a ir"], ["vo'a ir", "voa ir"], ["vo'a ir", "vo a ir"],
+    ["pa'l club", "para el club"], ["pa'l club", "pal club"], ["pa'l club", "pa el club"],
+    ["to'l club", "todo el club"], ["to'l club", "tol club"],
+    ["pa'llá voy", "para alla voy"], ["pa'llá voy", "palla voy"],
+    ["pa'lante voy", "para adelante voy"], ["pa'lante voy", "palante voy"],
+  ]) {
+    g = typed(text, keys);
+    check(`${text} typed ${keys}`, [g.isDone(), g.stats().misses].join(), "true,0");
+  }
+  g = typed("encima'e ti", "encim");
+  check("a part of the first word doesn't count", g.isRevealed(0), false);
+  check("first word: a wrong second word misses", types(typed("encima'e ti", "encima").setBuffer("xx ")), "miss");
+  g = typed("la'o ti", "lado ti");
+  check("one word eaten inside stays one word", [g.isDone(), g.stats().misses, g.stats().total].join(), "true,0,2");
+}
+
+// --- multi-word forms, as the AI can suggest them: hold --------------------------------
+
+{
+  const parsed = parseLyrics({ text: "canso ti" });
+  addForms(parsed.words[0], ["cansado de"]);
+  const g = createTypingGame(parsed);
+  g.type("cansado");
+  check("first word of a phrase alone does not reveal", g.isRevealed(0), false);
+  check("space holds", types(g.setBuffer("cansado ")), "hold");
+  check("hold keeps the text", g.buffer(), "cansado ");
   check("hold is not a miss", g.stats().misses, 0);
-  const ev3 = g.type("a");
-  check("voy a reveals", types(ev3), "reveal");
-  check("voy a: cursor on the next word", g.cursor(), 1);
-  void ev1;
+  check("second word reveals", count(g.type("de"), "reveal"), 1);
 }
 {
-  const g = game("salgo'el club");
-  g.type("salgo");
-  check("salgo + space holds", types(g.setBuffer("salgo ")), "hold");
-  g.type("del");
-  check("salgo del reveals", g.isRevealed(0), true);
-  const g2 = game("salgo'el club");
-  g2.type("salgo el");
-  check("salgo el reveals", g2.isRevealed(0), true);
-  const g3 = game("salgo'el club");
-  g3.type("salgoel");
-  check("salgoel reveals", g3.isRevealed(0), true);
-  const g4 = game("salgo'el club");
-  g4.type("salgodel");
-  check("salgodel reveals", g4.isRevealed(0), true);
-}
-{
-  const g = game("pa'l club");
-  check("para holds for pa'l", types(g.setBuffer("para ")), "hold");
-  g.type("el");
-  check("para el reveals pa'l", g.isRevealed(0), true);
-}
-{
-  const g = game("vo'a ir");
-  g.type("voy ");
-  const bad = g.type("x ");
-  check("hold then a wrong continuation misses", count(bad, "miss"), 1);
+  const parsed = parseLyrics({ text: "canso ti" });
+  addForms(parsed.words[0], ["cansado de"]);
+  const g = createTypingGame(parsed);
+  g.type("cansado ");
+  check("hold then a wrong continuation misses", count(g.type("perro "), "miss"), 1);
   check("the miss clears the held text", g.buffer(), "");
-  check("the word is still open", g.isRevealed(0), false);
-}
-{
-  const g = game("vo'a ir");
-  g.type("voy ");
-  check("another space while holding changes nothing", g.setBuffer("voy  ").length, 0);
-  check("buffer still held", g.buffer(), "voy ");
+  check("the word stays open", g.isRevealed(0), false);
 }
 
 // --- other contractions ------------------------------------------------------------------

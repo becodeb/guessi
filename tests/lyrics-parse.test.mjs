@@ -248,14 +248,33 @@ const accepts = (raw, typed) => acceptsWord(word(raw), typed);
 // --- forms: mid apostrophe ----------------------------------------------------------------
 
 {
-  const w = word("salgo'el");
-  checkTrue("mid: salgo del", acceptsWord(w, "salgo del"));
-  checkTrue("mid: salgo el", acceptsWord(w, "salgo el"));
-  checkTrue("mid: salgoel", acceptsWord(w, "salgoel"));
-  checkTrue("mid: salgodel", acceptsWord(w, "salgodel"));
-  checkTrue("mid: 'salgo' alone holds", holdsWord(w, "salgo"));
-  checkFalse("mid: 'salgo' alone is not accepted", acceptsWord(w, "salgo"));
-  checkFalse("mid: junk does not hold", holdsWord(w, "salto"));
+  // Two words behind one apostrophe: two slots, glued when rendered.
+  const pieces = (text) => parseLyrics({ text }).words;
+  const two = (text, first, second, firstTyped, secondTyped) => {
+    const w = pieces(text);
+    check(`split: ${text} is two slots`, w.length, 2);
+    check(`split: ${text} first`, w[0].text, first);
+    check(`split: ${text} second`, w[1].text, second);
+    check(`split: ${text} renders glued`, [w[1].glue, w[1].pre].join(), "true,'");
+    for (const t of firstTyped) checkTrue(`split: ${first} takes ${t}`, acceptsWord(w[0], t));
+    for (const t of secondTyped) checkTrue(`split: ${second} takes ${t}`, acceptsWord(w[1], t));
+  };
+  two("encima'e", "encima", "e", ["encima"], ["e", "de"]);
+  two("cuerpo'e", "cuerpo", "e", ["cuerpo"], ["de"]);
+  two("salgo'el", "salgo", "el", ["salgo"], ["el", "del"]);
+  two("vo'a", "vo", "a", ["vo", "voy"], ["a"]);
+  two("pa'l", "pa", "l", ["pa", "para"], ["l", "el"]);
+  two("to'l", "to", "l", ["to", "todo"], ["l", "el"]);
+  two("pa'llá", "pa", "llá", ["para"], ["lla", "alla"]);
+  two("pa'trá", "pa", "trá", ["para"], ["tra", "atras"]);
+  two("pa'lante", "pa", "lante", ["para"], ["lante", "adelante"]);
+  const punct = pieces("¿encima'e, ya?");
+  check("split: leading punctuation on the first", punct[0].pre, "¿");
+  check("split: trailing punctuation on the second", punct[1].post, ",");
+  for (const whole of ["la'o", "pasa'o", "calla'o", "to's", "to'a", "a'lante", "i'm", "we're", "you'll", "mi'mo"]) {
+    check(`no split: ${whole} is one word`, pieces(whole).length, 1);
+  }
+  check("no split inside backing vocals", pieces("hola (encima'e)").length, 1);
 }
 {
   checkTrue("mid: la'o is lado", accepts("la'o", "lado"));
@@ -265,14 +284,6 @@ const accepts = (raw, typed) => acceptsWord(word(raw), typed);
   checkTrue("mid: peca'o is pecado", accepts("peca'o", "pecado"));
   checkTrue("mid: mi'mo is mismo", accepts("mi'mo", "mismo"));
   checkTrue("mid: callaí'ta is calladita", accepts("callaí'ta", "calladita"));
-  checkTrue("mid: cuerpo'e is cuerpo de", accepts("cuerpo'e", "cuerpo de"));
-  checkTrue("mid: vo'a is voy a", accepts("vo'a", "voy a"));
-  checkTrue("mid: vo'a holds voy", holdsWord(word("vo'a"), "voy"));
-  checkTrue("mid: pa'l is para el", accepts("pa'l", "para el"));
-  checkTrue("mid: pa'l holds para", holdsWord(word("pa'l"), "para"));
-  checkTrue("mid: to'l is todo el", accepts("to'l", "todo el"));
-  checkTrue("mid: pa'llá is para alla", accepts("pa'llá", "para alla"));
-  checkTrue("mid: pa'trá is para atras", accepts("pa'trá", "para atras"));
   checkTrue("mid: a'lante is adelante", accepts("a'lante", "adelante"));
   checkTrue("mid: to's is todos", accepts("to's", "todos"));
 }

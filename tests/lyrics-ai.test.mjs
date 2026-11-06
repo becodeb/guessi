@@ -56,12 +56,12 @@ check("an array is not an answer", extractJson('["a"]'), null);
 
 // --- candidates ------------------------------------------------------------------
 {
-  const parsed = parseLyrics({ text: "Salgo'el cuerpo y pa' ti\nPa' ti, vamo' pa'llá\nsolo palabras limpias" });
+  const parsed = parseLyrics({ text: "Pasa'o cuerpo y pa' ti\nPa' ti, vamo' la'o\nsolo palabras limpias" });
   const c = candidateWords(parsed);
   check("only words with ' or -", c.includes("cuerpo"), false);
-  check("keeps the raw spelling", c.includes("Salgo'el"), true);
+  check("keeps the raw spelling", c.includes("Pasa'o"), true);
   check("unique case-insensitively", c.filter((w) => w.toLowerCase() === "pa'").length, 1);
-  check("order of appearance", c[0], "Salgo'el");
+  check("order of appearance", c[0], "Pasa'o");
 }
 
 // --- prompt ------------------------------------------------------------------------
