@@ -76,6 +76,7 @@
       var params = new URLSearchParams(location.search);
       var PREMIUM = params.get("premium") !== "0"; // default: Premium account
       var EMPTY = params.get("empty") === "1"; // default: seeded library
+      var API = params.get("api") || "ok"; // ok | down | 502 | hang — how the stubbed /api/ behaves
       var DEMO = params.get("demo") === "1"; // captions stand in for the missing audio
       // Not one of the two params the task asked for by name, but something has
       // to keep the login screen reachable: main.js redirects #/login → #/juegos
@@ -689,6 +690,31 @@
             return REAL_FETCH(input, init);
           }
           return handleLrclib(u);
+        }
+        // The stats server (nginx proxies /api/ to it in production). Every call
+        // is logged in window.__statsRequests so a browser check can assert that
+        // syncing happens and never blocks typing. ?api=down makes the network
+        // fail, ?api=502 answers a gateway error, ?api=hang never answers: the
+        // game must behave the same in all of them.
+        if (u && u.origin === location.origin && u.pathname.indexOf("/api/") === 0) {
+          var sent = null;
+          try { sent = init && init.body ? JSON.parse(init.body) : null; } catch (e) { sent = null; }
+          var headers = (init && init.headers) || {};
+          (window.__statsRequests = window.__statsRequests || []).push({
+            at: Date.now(),
+            method: method,
+            path: u.pathname,
+            plays: sent && Array.isArray(sent.plays) ? sent.plays.length : null,
+            ids: sent && Array.isArray(sent.plays) ? sent.plays.map(function (p) { return p.id; }) : null,
+            keepalive: Boolean(init && init.keepalive),
+            authorized: /^Bearer \S+$/.test(headers.Authorization || ""),
+          });
+          if (API === "down") return Promise.reject(new TypeError("Failed to fetch"));
+          if (API === "hang") return new Promise(function () {});
+          if (API === "502") return Promise.resolve(new Response("<html>502</html>", { status: 502 }));
+          if (u.pathname === "/api/plays") return json({ saved: sent && sent.plays ? sent.plays.length : 0, skipped: 0 });
+          if (u.pathname === "/api/health") return json({ ok: true, dbCreatedAt: new Date().toISOString(), users: 1 });
+          return json({});
         }
         // Fonts and picsum covers: real network (confirmed reachable — see
         // coverImages() above), so the baseline looks like production.
