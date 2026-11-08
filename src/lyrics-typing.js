@@ -15,7 +15,7 @@
 // hands this engine only the part past it.
 
 import {
-  acceptsWord, fuzzyAccepts, holdsWord, isCutOfWhole, plain, mapHomoglyphs,
+  acceptsWord, fuzzyAccepts, holdsWord, isCutOfWhole, plain, mapHomoglyphs, swappedAccepts,
 } from "./lyrics-parse.js";
 
 /** Keep letters, digits and single spaces (accents stay for display). */
@@ -159,11 +159,61 @@ export function createTypingGame(parsed) {
     return acceptsWord(w, buf) || growsIntoForm(w, plain(buf)) || w.forms.has(plain(buf));
   }
 
+  // --- a word typed ahead -----------------------------------------------------
+  // The player sometimes skips a word they didn't hear (an "y" before the line
+  // they know). A word typed whole that belongs a little further on goes straight
+  // there, and the skipped ones stay open. Only exact matches, only a few words
+  // ahead, and never while the text could still be the current word: `lo` stays in
+  // `logré` even when `lo` comes right after.
+  const AHEAD = 3;
+
+  function aheadIndices() {
+    const out = [];
+    for (let i = state.cursor + 1; i < total && out.length < AHEAD; i++) if (!revealed[i]) out.push(i);
+    return out;
+  }
+
+  function couldBeCurrent(buf) {
+    const i = state.cursor;
+    return hints[i] > 0 || plausibleStart(i, buf) || holdsWord(words[i], buf);
+  }
+
+  /** First word ahead that takes `buf` exactly, or -1. */
+  function aheadMatch(buf) {
+    for (const j of aheadIndices()) {
+      const w = words[j];
+      if (!isCutOfWhole(w, buf) && acceptsWord(w, buf)) return j;
+    }
+    return -1;
+  }
+
+  function jumpTo(j, typed, events) {
+    state.buffer = "";
+    state.cursor = j;
+    reveal(j, "typed", events);
+    state.tail = { index: j, typed, swallowed: "" };
+  }
+
   function autoReveal(events) {
     if (isDone() || state.cursor < 0) return false;
     const w = words[state.cursor];
     const full = fullTyped(state.cursor, state.buffer);
-    if (!acceptsWord(w, full)) return false;
+    if (!acceptsWord(w, full)) {
+      const p = plain(full);
+      // Two neighboring letters swapped, once the word is as long as it should be.
+      if (swappedAccepts(w, full) && !growsIntoForm(w, p)) {
+        const index = state.cursor;
+        state.buffer = "";
+        reveal(index, modeFor(index), events);
+        return true;
+      }
+      if (couldBeCurrent(state.buffer)) return false;
+      const j = aheadMatch(state.buffer);
+      // Wait while a longer word ahead could still be what's being typed.
+      if (j < 0 || aheadIndices().some((k) => growsIntoForm(words[k], p))) return false;
+      jumpTo(j, p, events);
+      return true;
+    }
     // A word whole in the lyric never takes a shortened version. A cut one takes its
     // short form at once: `to` reveals `to'`, and the `do` of `todo` goes to the tail.
     // A spelling match still growing waits (`par` shares its key with `pa'l`, but the
@@ -236,9 +286,12 @@ export function createTypingGame(parsed) {
       // Before the fuzzy check: `para` is one slip away from `paral`.
       state.buffer = `${b} `;
       events.push({ type: "hold", index });
-    } else if (!cut && fuzzyAccepts(w, full)) {
+    } else if (!cut && (fuzzyAccepts(w, full) || swappedAccepts(w, full))) {
       state.buffer = "";
       reveal(index, modeFor(index), events);
+    } else if (hints[index] === 0 && aheadMatch(b) >= 0) {
+      jumpTo(aheadMatch(b), plain(b), events);
+      state.tail = null;
     } else {
       state.buffer = "";
       confirmed[index] = 0;

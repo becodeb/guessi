@@ -310,6 +310,25 @@ export function fuzzyAccepts(word, typed) {
   return false;
 }
 
+/**
+ * A slip of the fingers, not a different word: exactly two neighboring letters
+ * swapped (`siemper`, `seimpre` for `siempre`). Words of 4 letters or more only, so
+ * short real words (`el`/`le`) are never confused.
+ */
+export function swappedAccepts(word, typed) {
+  const p = [...plain(typed)];
+  if (p.length < 4) return false;
+  for (const form of word.forms) {
+    const f = [...form];
+    if (f.length !== p.length) continue;
+    const diff = [];
+    for (let i = 0; i < f.length && diff.length <= 2; i++) if (f[i] !== p[i]) diff.push(i);
+    if (diff.length === 2 && diff[1] === diff[0] + 1
+      && f[diff[0]] === p[diff[1]] && f[diff[1]] === p[diff[0]]) return true;
+  }
+  return false;
+}
+
 /** The typed text is a strict prefix of a multi-word form (`voy` for `vo'a`). */
 export function holdsWord(word, typed) {
   const p = plain(typed);

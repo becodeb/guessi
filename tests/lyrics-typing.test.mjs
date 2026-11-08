@@ -485,6 +485,68 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   check("2: dos still reveals", reveals("2 veces", "dos"), true);
 }
 
+// --- a word typed ahead goes where it belongs ---------------------------------------
+{
+  let g = game("y pensé en ti");
+  g.type("pensé");
+  check("ahead: pensé lands on its slot", g.isRevealed(1), true);
+  check("ahead: the skipped y stays open", g.isRevealed(0), false);
+  check("ahead: the cursor goes on from there", g.cursor(), 2);
+  check("ahead: no miss", g.stats().misses, 0);
+  g.type(" en ti");
+  check("ahead: the rest goes on normally", [g.isRevealed(2), g.isRevealed(3)].join(), "true,true");
+  check("ahead: the skipped word can still be typed", (g.moveCursor(0), g.type("y"), g.isDone()), true);
+
+  g = game("logré lo que quise");
+  g.type("lo");
+  check("ahead: lo stays in logré, it starts it", [g.isRevealed(0), g.isRevealed(1), g.buffer()].join(), "false,false,lo");
+  g.type("gré");
+  check("ahead: logré finishes in its own slot", [g.isRevealed(0), g.isRevealed(1)].join(), "true,false");
+
+  g = game("y la luna sale hoy");
+  g.type("sale");
+  check("ahead: three words ahead is in range", g.isRevealed(3), true);
+  g = game("y la luna sale hoy");
+  g.type("hoy ");
+  check("ahead: four words ahead is out of range", [g.isRevealed(4), g.stats().misses].join(), "false,1");
+
+  g = game("y amigo a casa");
+  g.type("a");
+  check("ahead: waits while a longer word ahead could be typed", g.isRevealed(2), false);
+  g.type("migo");
+  check("ahead: amigo goes to its slot", [g.isRevealed(1), g.isRevealed(2)].join(), "true,false");
+
+  g = game("y siempre te quiero");
+  g.type("seimpre");
+  check("ahead: only exact words jump, a slip does not", g.isRevealed(1), false);
+
+  g = game("que pasa");
+  g.type("q");
+  check("ahead: hints and cuts still apply ahead too", g.isRevealed(0), false);
+
+  g = game("ya la luna");
+  g.hint();
+  g.type("luna ");
+  check("ahead: never with hint letters locked in", [g.isRevealed(2), g.stats().misses].join(), "false,1");
+
+  g = game("cuando te vi");
+  g.type("te ");
+  check("ahead: a space also jumps", g.isRevealed(1), true);
+}
+
+// --- two neighboring letters swapped ------------------------------------------------
+{
+  const reveals = (text, typed) => { const g = game(text); g.type(typed); return g.isRevealed(0); };
+  check("swap: siemper is siempre", reveals("siempre ya", "siemper"), true);
+  check("swap: seimpre is siempre", reveals("siempre ya", "seimpre"), true);
+  check("swap: counts as typed", (() => { const g = game("siempre ya"); g.type("siemper"); return g.howRevealed(0); })(), "typed");
+  check("swap: two swaps are not a slip", reveals("siempre ya", "seimper "), false);
+  check("swap: far apart letters are not a slip", reveals("siempre ya", "eiempra "), false);
+  check("swap: short words never", reveals("el ya", "le "), false);
+  check("swap: 4 letters work", reveals("pero ya", "preo"), true);
+  check("swap: the first letters too", reveals("nunca ya", "unnca"), true);
+}
+
 // --- locked hint letters --------------------------------------------------------------
 {
   const pick = () => game("dale fuerte");

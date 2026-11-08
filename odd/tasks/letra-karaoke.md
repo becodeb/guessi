@@ -386,6 +386,13 @@ glued (`encima'e` = `encima` + `de` or `e`; also `salgo'el`, `vo'a`, `pa'l`, `to
 `pa'trá`, `pa'lante`). Words eaten from the inside stay one slot (`la'o`, `pasa'o`, `to's`,
 `a'lante`, English contractions). Replay of 53 real songs: 0 misses, 0 leaks.
 
+Accepted change from play testing: a word typed whole that belongs up to 3 open words
+ahead goes there and the skipped ones stay open, never while the text could still be the
+current word (`lo` stays in `logré`), never on a slip, never with hint letters locked in.
+Two neighboring letters swapped count for words of 4+ letters (`siemper`). Replay of 53
+real songs: correct typing never landed in another slot; skipping one word landed right
+1901 of 1929 times; a swap was accepted 5539 of 5571 times.
+
 ## Next step
 
 The user plays and reports where they get stuck. Push and deploy are their decision.
