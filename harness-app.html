@@ -71,9 +71,11 @@
     // ordering problem).
     (function () {
       "use strict";
-      localStorage.clear();
-
       var params = new URLSearchParams(location.search);
+      // ?keep=1 keeps what the previous load left in localStorage (a reload that
+      // must find the saved lyrics-game session); the default starts clean.
+      if (params.get("keep") !== "1") localStorage.clear();
+
       var PREMIUM = params.get("premium") !== "0"; // default: Premium account
       var EMPTY = params.get("empty") === "1"; // default: seeded library
       var API = params.get("api") || "ok"; // ok | down | 502 | hang — how the stubbed /api/ behaves
