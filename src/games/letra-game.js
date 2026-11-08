@@ -10,7 +10,7 @@ import { createInputFeed, feedInput } from "../typing-input.js";
 import {
   createViewportTracker, scrollTarget, anchorFor, scrollPadding,
 } from "../letra-layout.js";
-import { createQueue } from "../lyrics-queue.js";
+import { createQueue, restoreQueue } from "../lyrics-queue.js";
 import { enrichForms } from "../lyrics-ai.js";
 import {
   DEFAULT_FLOOD, floodFromRgb, fallbackFlood, dominantRgb,
@@ -18,7 +18,11 @@ import {
 import { artistNames } from "../clip-guess.js";
 import { mountPicker, pickImage } from "./letra-picker.js";
 import { buildRecord, upsertRecord, newPlayId, addActiveTime } from "../letra-stats.js";
-import { loadLetraHistory, saveLetraHistory, loadLetraSynced, saveLetraSynced, loadTokens } from "../storage.js";
+import {
+  loadLetraHistory, saveLetraHistory, loadLetraSynced, saveLetraSynced, loadTokens,
+  loadLetraSession, saveLetraSession, clearLetraSession,
+} from "../storage.js";
+import { lyricsSignature, buildSession, parseSession, sessionSummary } from "../letra-session.js";
 import { getAccessToken } from "../auth.js";
 import { syncPlays, createScheduler } from "../stats-sync.js";
 
@@ -27,6 +31,7 @@ const PHONE_QUERY = "(max-width: 720px)";
 const STREAK_SHOWN_FROM = 5;
 const TYPING_IDLE_MS = 700;
 const SAMPLE_TIMEOUT_MS = 4000;
+const SESSION_SAVE_MS = 1000;
 
 let handle = null;
 
@@ -82,6 +87,9 @@ export function mount(container, ctx) {
     playing: false, // this tab is audibly playing the current song
     touchedPlayback: false,
     repeat: false,
+    saved: {}, // progress restored from a saved session, by track id; used as each song's lyrics load
+    session: null, // the saved session the picker offers to continue (parsed)
+    sessionTimer: 0,
     rafId: 0,
     offs: [],
     dialog: null,
@@ -95,6 +103,7 @@ export function mount(container, ctx) {
   // Closing the tab or switching apps on a phone may never reach unmount.
   const saveOnHide = () => {
     if (handle?.cur) saveEntry(handle.cur);
+    flushSession();
     syncOnHide();
   };
   const saveWhenHidden = () => { if (document.visibilityState === "hidden") saveOnHide(); };
@@ -119,13 +128,18 @@ export function mount(container, ctx) {
     });
   }
   fitViewport();
-  showPicker();
+  // A saved session brings the player straight back to its song, paused.
+  const stored = loadLetraSession();
+  const session = parseSession(stored);
+  if (!session) clearLetraSession(); // none, expired, from another version or corrupt
+  if (!session || !resumeSession(session)) showPicker();
   syncNow(); // anything left over from earlier sessions or a server that was down
 }
 
 export function unmount() {
   const h = handle;
   if (!h) return;
+  flushSession();
   for (const entry of h.entries.values()) saveEntry(entry);
   h.alive = false;
   cancelAnimationFrame(h.rafId);
@@ -218,6 +232,11 @@ function fitScroller() {
 
 function showPicker(message) {
   const h = handle;
+  if (h.queue) {
+    // Going back to the picker keeps the session, unless there is nothing left to play.
+    if (message) discardSession();
+    else h.session = parseSession(flushSession());
+  }
   teardownPlay();
   h.root.dataset.mode = "pick";
   setFlood(DEFAULT_FLOOD);
@@ -225,7 +244,12 @@ function showPicker(message) {
   h.picker?.destroy();
   const host = ui.el("div", { class: "letra__screen" });
   h.root.replaceChildren(host);
-  h.picker = mountPicker(host, { ctx: h.ctx, onStart: startQueue });
+  const summary = h.session ? sessionSummary(h.session) : null;
+  h.picker = mountPicker(host, {
+    ctx: h.ctx,
+    onStart: startQueue,
+    resume: summary && { track: summary.track, number: summary.number, size: summary.size, onClick: resumeFromPicker },
+  });
   if (message) h.picker.say(message);
   h.picker.focus();
 }
@@ -249,6 +273,87 @@ function teardownPlay() {
   h.cur = null;
   h.view = null;
   h.repeat = false;
+  h.saved = {};
+}
+
+// --- the session kept across reloads ---------------------------------------------
+
+/** What one loaded song has to save, or null when it is still untouched. */
+function liveSong(entry) {
+  const engine = entry.game.snapshot();
+  const pos = positionOf(entry);
+  const touched = engine.how.some(Boolean) || Object.keys(engine.hints).length > 0 || engine.cursor !== 0;
+  if (!touched && !entry.t0 && !(pos > 0)) return null;
+  return {
+    sig: entry.sig, engine, pos, playId: entry.playId, t0: entry.t0, activeMs: entry.activeMs,
+    elapsed: entry.finished ? entry.elapsed : 0,
+  };
+}
+
+/** Writes the session now (cancelling a pending write) and returns what was written. */
+function flushSession() {
+  const h = handle;
+  if (!h) return null;
+  clearTimeout(h.sessionTimer);
+  h.sessionTimer = 0;
+  if (!h.queue) return null;
+  try {
+    const queue = h.queue.snapshot();
+    const songs = {};
+    for (const t of queue.tracks) {
+      const e = h.entries.get(t.id);
+      // A song whose lyrics have not loaded yet keeps what was restored for it.
+      const song = e?.state === "ready" && e.game ? liveSong(e) : h.saved[t.id];
+      if (song) songs[t.id] = song;
+    }
+    const session = buildSession({ queue, repeat: h.repeat, songs });
+    // A write the browser refuses must not leave an older list behind to come back to.
+    if (!saveLetraSession(session)) clearLetraSession();
+    return session;
+  } catch {
+    return null; // the session is a convenience: never in the way of the game
+  }
+}
+
+/** Saving never blocks typing: one write about a second after the last change. */
+function scheduleSession() {
+  const h = handle;
+  if (!h?.queue || h.sessionTimer) return;
+  h.sessionTimer = setTimeout(flushSession, SESSION_SAVE_MS);
+}
+
+function discardSession() {
+  const h = handle;
+  clearTimeout(h.sessionTimer);
+  h.sessionTimer = 0;
+  h.session = null;
+  clearLetraSession();
+}
+
+/** Back to the saved song, paused. Returns false when the session cannot be used. */
+function resumeSession(session) {
+  const h = handle;
+  const queue = restoreQueue(session.queue);
+  if (!queue) return false;
+  h.picker?.destroy();
+  h.picker = null;
+  teardownPlay();
+  h.queue = queue;
+  h.saved = session.songs;
+  h.repeat = session.repeat;
+  h.session = null;
+  buildPlayView();
+  paintRepeat();
+  activate(queue.current(), +1, null);
+  return true;
+}
+
+function resumeFromPicker() {
+  const h = handle;
+  const session = h.session;
+  if (session && resumeSession(session)) return;
+  discardSession();
+  h.picker?.say("No pude retomar esa lista. Elige otra.");
 }
 
 // --- queue + entries ----------------------------------------------------------
@@ -258,9 +363,11 @@ function startQueue(tracks, startIndex) {
   h.picker?.destroy();
   h.picker = null;
   teardownPlay();
+  discardSession(); // a new list replaces the saved one
   h.queue = createQueue(tracks, { startIndex });
   buildPlayView();
   activate(h.queue.current(), +1, null);
+  scheduleSession();
 }
 
 function entryFor(track) {
@@ -281,7 +388,8 @@ function entryFor(track) {
       cursor: -2,
       sungLine: -1,
       revealedN: 0,
-      pending: 0, // where the song will start (ms); the live position while playing
+      sig: "", // signature of the lyrics this game was built from
+      pending: h.saved[track.id]?.pos ?? 0, // where the song will start (ms); the live position while playing
       pendingAt: 0,
       duration: track.duration_ms ?? 0,
       flood: fallbackFlood(track.id),
@@ -313,6 +421,7 @@ function activate(track, dir, from) {
   const prev = h.cur;
   if (prev && prev !== entryFor(track)) leave(prev);
   const entry = entryFor(track);
+  scheduleSession();
   const nav = ++h.navSeq;
   const resume = h.wantPlay;
   const wasPlaying = h.playing;
@@ -421,6 +530,8 @@ async function loadEntry(entry) {
   }
   entry.parsed = parsed;
   entry.game = createTypingGame(parsed);
+  entry.sig = lyricsSignature(parsed);
+  restoreProgress(entry);
   entry.timeline = [];
   parsed.lines.forEach((line, l) => {
     if (line.ms != null) entry.timeline.push({ l, ms: line.ms });
@@ -431,6 +542,27 @@ async function loadEntry(entry) {
   // answers. The game never waits for it, and the local rules work alone.
   enrichForms(parsed, { signal: ctrl.signal });
   return true;
+}
+
+/**
+ * Puts back what a saved session kept for this song, if the lyrics are the ones
+ * it was typed against. The history record carries on under its own id; the clock
+ * of typing restarts, so the time away is not counted.
+ */
+function restoreProgress(entry) {
+  const rec = handle?.saved?.[entry.track.id];
+  if (!rec || rec.sig !== entry.sig || !entry.game.restore(rec.engine)) return;
+  if (rec.playId && rec.t0 > 0) {
+    entry.playId = rec.playId;
+    entry.t0 = rec.t0;
+    entry.activeMs = rec.activeMs;
+    entry.lastAt = 0;
+  }
+  if (entry.game.isDone()) {
+    // The finish panel comes back as it was: no new history write, no new clock.
+    entry.finished = true;
+    entry.elapsed = rec.elapsed;
+  }
 }
 
 // --- cover color --------------------------------------------------------------
@@ -851,6 +983,7 @@ function afterEngine(entry, events) {
   const v = h.view;
   const g = entry.game;
   syncField(g);
+  scheduleSession();
   if (!entry.t0 && events.some((e) => e.type !== "typing" || g.buffer())) {
     entry.t0 = Date.now();
     entry.playId = newPlayId();
@@ -1151,6 +1284,7 @@ function togglePlay() {
     }
   }
   paintTransport();
+  scheduleSession();
   refocus();
 }
 
@@ -1190,15 +1324,22 @@ function toggleShuffle() {
   const h = handle;
   h.queue.setShuffle(!h.queue.isShuffled());
   paintCount();
+  scheduleSession();
   refocus();
 }
 
 function toggleRepeat() {
   const h = handle;
   h.repeat = !h.repeat;
+  paintRepeat();
+  scheduleSession();
+  refocus();
+}
+
+function paintRepeat() {
+  const h = handle;
   h.view.repeat.setAttribute("aria-pressed", String(h.repeat));
   h.view.repeat.classList.toggle("is-on", h.repeat);
-  refocus();
 }
 
 function listenFromLine() {
@@ -1227,6 +1368,7 @@ function listenFromLine() {
     startPlay(entry, ms);
   }
   paintTransport();
+  scheduleSession();
   refocus();
 }
 
@@ -1257,6 +1399,7 @@ function onSeekChange() {
   entry.pendingAt = performance.now();
   if (h.ctx.player.isOwning(entry.track.uri)) h.ctx.player.seekFree(ms);
   paintClock();
+  scheduleSession();
   refocus();
 }
 

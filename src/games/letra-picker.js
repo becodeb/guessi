@@ -48,10 +48,11 @@ function songWord(n) {
 
 /**
  * @param {HTMLElement} host
- * @param {{ctx: object, onStart: (tracks: object[], startIndex: number) => void, onTimed: () => void}} deps
+ * @param {{ctx: object, onStart: (tracks: object[], startIndex: number) => void,
+ *   resume?: {track: object, number: number, size: number, onClick: () => void} | null}} deps
  * @returns {{destroy: () => void, focus: () => void}}
  */
-export function mountPicker(host, { ctx, onStart }) {
+export function mountPicker(host, { ctx, onStart, resume = null }) {
   let alive = true;
   let busy = false;
   let searchTimer = null;
@@ -246,6 +247,16 @@ export function mountPicker(host, { ctx, onStart }) {
       ui.el("span", { class: "letra-tile__name", text: name }),
       meta ? ui.el("span", { class: "letra-tile__meta", text: meta }) : null,
     );
+  }
+
+  // A list left unfinished (or a page that was reloaded) comes first.
+  if (resume?.track) {
+    tiles.append(tile({
+      name: `Seguir con «${resume.track.name}»`,
+      meta: `Canción ${resume.number} de ${resume.size}`,
+      art: cover(pickImage(resume.track.album?.images, 300), "letra-tile__cover"),
+      onClick: resume.onClick,
+    }));
   }
 
   const pool = ctx.library.getPoolTracks();
