@@ -441,6 +441,69 @@ export function createTypingGame(parsed) {
       return events;
     },
 
+    // --- save / restore --------------------------------------------------------
+    // The progress worth keeping across a reload. The half-typed word and the
+    // swallowed tail are left out on purpose: a restored song waits on a clean field.
+
+    /** Plain data (JSON-safe) describing the progress so far. */
+    snapshot() {
+      const sparse = (arr) => {
+        const out = {};
+        arr.forEach((n, i) => { if (n > 0) out[i] = n; });
+        return out;
+      };
+      return {
+        how: how.slice(),
+        hints: sparse(hints),
+        confirmed: sparse(confirmed),
+        cursor: state.cursor,
+        streak: state.streak,
+        bestStreak: state.bestStreak,
+        misses: state.misses,
+        jumps: state.jumps,
+      };
+    },
+
+    /**
+     * Puts a snapshot back. Returns false, leaving the game untouched, when it
+     * does not fit these lyrics (another word count, an unknown way of revealing).
+     */
+    restore(snap) {
+      if (!snap || !Array.isArray(snap.how) || snap.how.length !== total) return false;
+      const modes = ["typed", "hint", "line", "repeat", "giveup"];
+      if (!snap.how.every((m) => m === null || modes.includes(m))) return false;
+      const count = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
+      const lettersOf = (i) => [...plain(words[i].text)].length;
+      snap.how.forEach((m, i) => {
+        revealed[i] = m !== null;
+        how[i] = m;
+        hints[i] = 0;
+        confirmed[i] = 0;
+      });
+      for (const [k, v] of Object.entries(snap.hints ?? {})) {
+        const i = Number(k);
+        if (!Number.isInteger(i) || i < 0 || i >= total) continue;
+        const cap = revealed[i] ? lettersOf(i) : Math.max(0, lettersOf(i) - 1);
+        hints[i] = Math.min(count(v), cap);
+      }
+      for (const [k, v] of Object.entries(snap.confirmed ?? {})) {
+        const i = Number(k);
+        if (!Number.isInteger(i) || i < 0 || i >= total) continue;
+        confirmed[i] = Math.min(count(v), hints[i]);
+      }
+      state.streak = count(snap.streak);
+      state.bestStreak = Math.max(count(snap.bestStreak), state.streak);
+      state.misses = count(snap.misses);
+      state.jumps = count(snap.jumps);
+      state.buffer = "";
+      state.tail = null;
+      const c = snap.cursor;
+      state.cursor = isDone() ? -1
+        : Number.isInteger(c) && c >= 0 && c < total && !revealed[c] ? c : nextUnrevealed(0);
+      state.doneEmitted = isDone();
+      return true;
+    },
+
     // --- getters ---------------------------------------------------------------
 
     stats() {

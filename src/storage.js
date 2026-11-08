@@ -14,6 +14,7 @@ const KEYS = {
   aiForms: `${PREFIX}aiForms`,
   letraHistory: `${PREFIX}letraHistory`,
   letraSynced: `${PREFIX}letraSynced`,
+  letraSession: `${PREFIX}letraSession`,
 };
 
 // v1 nested a full album copy (covers included) inside every track and kept
@@ -253,4 +254,20 @@ export function loadLetraSynced() {
 
 export function saveLetraSynced(map) {
   return write(KEYS.letraSynced, map);
+}
+
+// --- the lyrics game's session, kept across reloads (see letra-session.js) ------
+
+/** The stored session as JSON, or null when absent or unreadable. */
+export function loadLetraSession() {
+  return read(KEYS.letraSession, null);
+}
+
+/** Returns false when the browser refused the write (quota, private mode). */
+export function saveLetraSession(session) {
+  return write(KEYS.letraSession, session);
+}
+
+export function clearLetraSession() {
+  remove(KEYS.letraSession);
 }

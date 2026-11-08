@@ -20,7 +20,7 @@ globalThis.localStorage = {
   get length() { return store.size; },
 };
 
-const { loadLibrary, saveLibrary, loadLetraSynced, saveLetraSynced } = await import("../src/storage.js");
+const { loadLibrary, saveLibrary, loadLetraSynced, saveLetraSynced, loadLetraSession, saveLetraSession, clearLetraSession } = await import("../src/storage.js");
 
 const LIB_KEY = "deoido.v1.library";
 let passed = 0;
@@ -214,6 +214,24 @@ function makeLib(trackCount, poolCount = trackCount) {
   check("synced: an array is not a map", loadLetraSynced(), {});
   store.set("deoido.v1.letraSynced", "{oops");
   check("synced: corrupt json", loadLetraSynced(), {});
+}
+
+// --- the lyrics game's session ------------------------------------------------
+
+{
+  store.clear();
+  check("session: none by default", loadLetraSession(), null);
+  check("session: save reports success", saveLetraSession({ v: 1, savedAt: 5 }), true);
+  check("session: round trip", loadLetraSession(), { v: 1, savedAt: 5 });
+  check("session: stored under its own key", store.has("deoido.v1.letraSession"), true);
+  store.set("deoido.v1.letraSession", "{oops");
+  check("session: corrupt json reads as none", loadLetraSession(), null);
+  saveLetraSession({ v: 1 });
+  clearLetraSession();
+  check("session: clear", store.has("deoido.v1.letraSession"), false);
+  failWhen = (k) => k === "deoido.v1.letraSession";
+  check("session: a refused write reports false, never throws", saveLetraSession({ v: 1 }), false);
+  failWhen = null;
 }
 
 // --- summary -----------------------------------------------------------------

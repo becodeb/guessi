@@ -28,9 +28,10 @@ export function playableTracks(tracks) {
 
 /**
  * @param {Array<{id: string}>} tracks
- * @param {{startIndex?: number, rng?: () => number}} [opts]
+ * @param {{startIndex?: number, rng?: () => number, restore?: {order: string[], shuffle: boolean}}} [opts]
+ *   `restore` puts a saved play order and shuffle state back (see `restoreQueue`).
  */
-export function createQueue(tracks, { startIndex = 0, rng = Math.random } = {}) {
+export function createQueue(tracks, { startIndex = 0, rng = Math.random, restore = null } = {}) {
   const seen = new Set();
   let original = [];
   for (const t of tracks ?? []) {
@@ -41,6 +42,11 @@ export function createQueue(tracks, { startIndex = 0, rng = Math.random } = {}) 
   let order = original.slice();
   let idx = original.length === 0 ? -1 : Math.min(Math.max(0, startIndex), original.length - 1);
   let shuffleOn = false;
+  if (restore) {
+    const byId = new Map(original.map((t) => [t.id, t]));
+    order = restore.order.map((id) => byId.get(id));
+    shuffleOn = Boolean(restore.shuffle) && order.length > 0;
+  }
 
   const api = {
     size: () => order.length,
@@ -48,6 +54,14 @@ export function createQueue(tracks, { startIndex = 0, rng = Math.random } = {}) 
     current: () => (idx >= 0 ? order[idx] : null),
     tracks: () => order.slice(),
     isShuffled: () => shuffleOn,
+
+    /** Plain data to rebuild this queue later: original order, current order, position. */
+    snapshot: () => ({
+      tracks: original.slice(),
+      order: order.map((t) => t.id),
+      index: idx,
+      shuffle: shuffleOn,
+    }),
     hasNext: () => idx >= 0 && idx + 1 < order.length,
     hasPrev: () => idx > 0,
 
@@ -99,4 +113,21 @@ export function createQueue(tracks, { startIndex = 0, rng = Math.random } = {}) 
     },
   };
   return api;
+}
+
+/**
+ * Rebuilds a queue from `queue.snapshot()` data. Returns null when the data is
+ * not a coherent queue (the saved order must be the same songs, once each).
+ */
+export function restoreQueue(snap, { rng = Math.random } = {}) {
+  const tracks = snap?.tracks;
+  const order = snap?.order;
+  if (!Array.isArray(tracks) || !Array.isArray(order) || tracks.length === 0) return null;
+  const ids = tracks.map((t) => t?.id);
+  if (ids.some((id) => typeof id !== "string" || !id) || new Set(ids).size !== ids.length) return null;
+  if (order.length !== ids.length || new Set(order).size !== order.length) return null;
+  const known = new Set(ids);
+  if (!order.every((id) => known.has(id))) return null;
+  if (!Number.isInteger(snap.index) || snap.index < 0 || snap.index >= order.length) return null;
+  return createQueue(tracks, { startIndex: snap.index, rng, restore: { order, shuffle: snap.shuffle } });
 }
