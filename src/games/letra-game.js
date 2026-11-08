@@ -17,6 +17,8 @@ import {
 } from "../letra-color.js";
 import { artistNames } from "../clip-guess.js";
 import { mountPicker, pickImage } from "./letra-picker.js";
+import { buildRecord, upsertRecord, newPlayId, addActiveTime } from "../letra-stats.js";
+import { loadLetraHistory, saveLetraHistory } from "../storage.js";
 
 const MIN_WORDS = 6; // fewer typeable words than this is not a lyric worth playing
 const PHONE_QUERY = "(max-width: 720px)";
@@ -88,7 +90,14 @@ export function mount(container, ctx) {
   };
   handle.themeWas = handle.themeMeta?.getAttribute("content") ?? null;
   setFlood(DEFAULT_FLOOD);
+  // Closing the tab or switching apps on a phone may never reach unmount.
+  const saveOnHide = () => { if (handle?.cur) saveEntry(handle.cur); };
+  const saveWhenHidden = () => { if (document.visibilityState === "hidden") saveOnHide(); };
+  window.addEventListener("pagehide", saveOnHide);
+  document.addEventListener("visibilitychange", saveWhenHidden);
   handle.offs.push(
+    () => window.removeEventListener("pagehide", saveOnHide),
+    () => document.removeEventListener("visibilitychange", saveWhenHidden),
     ctx.player.onPlayback(onPlayback),
     ctx.player.onPremiumError(() => paintTransport()),
     ctx.player.onReady(() => paintTransport()),
@@ -111,6 +120,7 @@ export function mount(container, ctx) {
 export function unmount() {
   const h = handle;
   if (!h) return;
+  for (const entry of h.entries.values()) saveEntry(entry);
   h.alive = false;
   cancelAnimationFrame(h.rafId);
   for (const off of h.offs) off();
@@ -216,6 +226,7 @@ function showPicker(message) {
 
 function teardownPlay() {
   const h = handle;
+  for (const entry of h.entries.values()) saveEntry(entry);
   h.sheet?.close();
   cancelAnimationFrame(h.rafId);
   h.rafId = 0;
@@ -273,6 +284,9 @@ function entryFor(track) {
       t0: 0,
       elapsed: 0,
       finished: false,
+      playId: null, // history record of this play, created on the first keystroke
+      activeMs: 0, // time actually spent typing, long pauses left out
+      lastAt: 0,
     };
     h.entries.set(track.id, e);
   }
@@ -323,6 +337,7 @@ function activate(track, dir, from) {
 
 function leave(entry) {
   const h = handle;
+  saveEntry(entry);
   if (h.playing && h.cur === entry) {
     entry.pending = positionOf(entry);
     entry.pendingAt = performance.now();
@@ -830,7 +845,15 @@ function afterEngine(entry, events) {
   const v = h.view;
   const g = entry.game;
   syncField(g);
-  if (!entry.t0 && events.some((e) => e.type !== "typing" || g.buffer())) entry.t0 = Date.now();
+  if (!entry.t0 && events.some((e) => e.type !== "typing" || g.buffer())) {
+    entry.t0 = Date.now();
+    entry.playId = newPlayId();
+  }
+  if (entry.t0) {
+    const now = Date.now();
+    entry.activeMs = addActiveTime(entry.activeMs, entry.lastAt, now);
+    entry.lastAt = now;
+  }
 
   const dirty = new Set();
   const popped = new Set();
@@ -1319,6 +1342,33 @@ function paintTransport() {
   measureBar();
 }
 
+// --- history --------------------------------------------------------------------
+
+/**
+ * Writes this song's play to the history on this device, once the player typed
+ * anything. Called again as the play goes on; the record is replaced, not added.
+ */
+function saveEntry(entry) {
+  if (!entry?.t0 || !entry.game || !entry.playId) return;
+  const stats = entry.game.stats();
+  const status = !entry.game.isDone() ? "open" : stats.givenUp > 0 ? "gaveup" : "complete";
+  const record = buildRecord({
+    id: entry.playId,
+    track: entry.track,
+    stats,
+    status,
+    startedAt: entry.t0,
+    endedAt: Date.now(),
+    activeMs: entry.activeMs,
+    source: entry.timeline?.length ? "synced" : "plain",
+  });
+  try {
+    saveLetraHistory(upsertRecord(loadLetraHistory(), record));
+  } catch {
+    // History is a bonus: a full or blocked storage never stops the game.
+  }
+}
+
 // --- finish -------------------------------------------------------------------
 
 function showFinish(entry) {
@@ -1327,6 +1377,7 @@ function showFinish(entry) {
   if (!entry.finished) {
     entry.finished = true;
     entry.elapsed = entry.t0 ? Date.now() - entry.t0 : 0;
+    saveEntry(entry);
   }
   const st = entry.game.stats();
   const stat = (value, label) => ui.el("div", { class: "letra__stat" },

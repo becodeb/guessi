@@ -12,6 +12,7 @@ const KEYS = {
   lyrics: `${PREFIX}lyrics`,
   manualLyrics: `${PREFIX}manualLyrics`,
   aiForms: `${PREFIX}aiForms`,
+  letraHistory: `${PREFIX}letraHistory`,
 };
 
 // v1 nested a full album copy (covers included) inside every track and kept
@@ -227,4 +228,16 @@ export function loadAiForms() {
 
 export function saveAiForms(map) {
   write(KEYS.aiForms, map);
+}
+
+// --- lyrics game history (one record per song played; see letra-stats.js) -----
+
+export function loadLetraHistory() {
+  const v = read(KEYS.letraHistory, []);
+  return Array.isArray(v) ? v : [];
+}
+
+/** Returns false when the browser refused the write (quota, private mode). */
+export function saveLetraHistory(list) {
+  return write(KEYS.letraHistory, list);
 }

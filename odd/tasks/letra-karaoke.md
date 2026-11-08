@@ -393,6 +393,14 @@ Two neighboring letters swapped count for words of 4+ letters (`siemper`). Repla
 real songs: correct typing never landed in another slot; skipping one word landed right
 1901 of 1929 times; a swap was accepted 5539 of 5571 times.
 
+Stats history (requested 2026-11-08, "register it internally now, show it and compare
+with friends later"): one record per song played, saved on this device under
+`deoido.v1.letraHistory` (cap 2000), from the first keystroke, replaced as the play goes
+on and saved on finish, song change, back to picker, leaving the game, and the tab being
+hidden. Records carry a stable id and a schema version so a future server can take the
+local history as is. `summarize()` is ready for a progress screen; nothing is shown yet.
+Pending, needs a product decision: where accounts and friends live (the app has no server).
+
 ## Next step
 
 The user plays and reports where they get stuck. Push and deploy are their decision.

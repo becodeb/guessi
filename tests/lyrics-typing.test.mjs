@@ -547,6 +547,22 @@ const revealedWords = (g, n) => Array.from({ length: n }, (_, i) => g.isRevealed
   check("swap: the first letters too", reveals("nunca ya", "unnca"), true);
 }
 
+// --- stats breakdown for the history ------------------------------------------------
+{
+  const g = game("y pensé en ti otra vez");
+  g.type("pensé ");
+  g.hint();
+  g.hint();
+  g.revealLine();
+  const st = g.stats();
+  check("stats: a jump is counted", st.jumps, 1);
+  check("stats: hint, line and open are split", [st.byHint, st.byLine, st.givenUp, st.open].join(), "1,4,0,0");
+  const g2 = game("hola mundo cruel");
+  g2.type("hola ");
+  g2.giveUp();
+  check("stats: given up words are their own count", [g2.stats().givenUp, g2.stats().typed].join(), "2,1");
+}
+
 // --- locked hint letters --------------------------------------------------------------
 {
   const pick = () => game("dale fuerte");

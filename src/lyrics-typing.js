@@ -46,6 +46,7 @@ export function createTypingGame(parsed) {
     streak: 0,
     bestStreak: 0,
     misses: 0,
+    jumps: 0, // words typed ahead of the cursor
     doneEmitted: false,
   };
 
@@ -188,6 +189,7 @@ export function createTypingGame(parsed) {
   }
 
   function jumpTo(j, typed, events) {
+    state.jumps++;
     state.buffer = "";
     state.cursor = j;
     reveal(j, "typed", events);
@@ -445,18 +447,27 @@ export function createTypingGame(parsed) {
       let typed = 0;
       let helped = 0;
       let repeated = 0;
+      const by = { hint: 0, line: 0, giveup: 0 };
       for (let i = 0; i < total; i++) {
         if (how[i] === "typed") typed++;
         else if (how[i] === "repeat") repeated++;
-        else if (how[i]) helped++;
+        else if (how[i]) {
+          helped++;
+          by[how[i]] = (by[how[i]] ?? 0) + 1;
+        }
       }
       return {
         total,
         typed,
         helped,
         repeated,
+        byHint: by.hint,
+        byLine: by.line,
+        givenUp: by.giveup,
+        open: total - typed - helped - repeated,
         bestStreak: state.bestStreak,
         misses: state.misses,
+        jumps: state.jumps,
         pct: total === 0 ? 0 : Math.round((100 * (typed + repeated)) / total),
       };
     },
