@@ -41,8 +41,8 @@ keeping, on this device, and come back to it paused.
 
 ## Tasks
 
-- [ ] R1 Engine `snapshot()` / `restore(snap)` in `src/lyrics-typing.js`, queue snapshot/restore in `src/lyrics-queue.js`, pure `src/letra-session.js` (encode, decode, signature, expiry, track compaction), storage helpers, tests. Route: delegated.
-- [ ] R2 Wiring in `src/games/letra-game.js` and the picker tile, harness check of a real reload. Route: delegated with R1.
+- [x] R1 Engine `snapshot()` / `restore(snap)` in `src/lyrics-typing.js`, queue snapshot/restore in `src/lyrics-queue.js`, pure `src/letra-session.js` (encode, decode, signature, expiry, track compaction), storage helpers, tests. Route: delegated.
+- [x] R2 Wiring in `src/games/letra-game.js` and the picker tile, harness check of a real reload. Route: delegated with R1.
 
 ## Checks
 
@@ -57,4 +57,9 @@ keeping, on this device, and come back to it paused.
 
 ## Progress
 
-Nothing yet.
+R1 and R2 in 9950c47, f657e31, a87114f (harness `?keep=1`). Writer ran every check in
+Checks against real lyrics: reload restores song, words, cursor and hint, paused, 0
+/me/player requests; position resumes on play; picker tile; shuffle and repeat; new list
+replaces; expired, corrupt and changed lyrics handled. Parent reran `npm test` (pass)
+and a reload in the browser (4 words and the cursor kept, 0 player requests).
+Not checked on a phone viewport.
