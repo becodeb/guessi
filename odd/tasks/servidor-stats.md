@@ -30,7 +30,7 @@ their Spotify account, and expose what a future progress/friends screen needs.
 - [x] S1 Server: `server/` with Express app, SQLite schema, Spotify-token auth, endpoints, tests, Dockerfile. Route: delegated.
 - [x] S2 Compose + nginx proxy + healthcheck. Route: delegated with S1.
 - [x] S3 Client sync from the game, never blocking. Route: delegated with S1.
-- [ ] S4 Deploy and verify persistence across a redeploy. Route: parent.
+- [x] S4 Deploy and verify persistence across a redeploy. Route: parent.
 
 ## S1 spec
 
@@ -91,6 +91,13 @@ S1-S3 in 3822499, c922377, 65d0865, f8773ae. Writer ran the real compose locally
 services healthy, health 200, bad token 401, app served with api down, dbCreatedAt kept
 after down/up. Parent reran root tests (pass) and server tests (16/16).
 
+S4 (2026-11-08): deployed as 94f65ff. Coolify puts both services only on the app's own
+network (no name clash with other apps). Live: health 200, bad token 401, no token 401.
+Forced redeploy: dbCreatedAt stayed 2026-11-08T03:14:06.551Z, so the volume
+`ludaqpv0n6zrqs3aecuhyqsk_guessi-data` survives deploys. Not verified: a real sync with a
+real Spotify token (only the owner can do it); no backup of the volume is scheduled.
+
 ## Next step
 
-S1-S3 delegated to one writer.
+The user plays one song; then `/api/health` should show users: 1. After that, a progress
+and friends screen on top of `/api/me` and `/api/friends`.
