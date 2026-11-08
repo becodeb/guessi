@@ -18,7 +18,9 @@ import {
 import { artistNames } from "../clip-guess.js";
 import { mountPicker, pickImage } from "./letra-picker.js";
 import { buildRecord, upsertRecord, newPlayId, addActiveTime } from "../letra-stats.js";
-import { loadLetraHistory, saveLetraHistory } from "../storage.js";
+import { loadLetraHistory, saveLetraHistory, loadLetraSynced, saveLetraSynced, loadTokens } from "../storage.js";
+import { getAccessToken } from "../auth.js";
+import { syncPlays, createScheduler } from "../stats-sync.js";
 
 const MIN_WORDS = 6; // fewer typeable words than this is not a lyric worth playing
 const PHONE_QUERY = "(max-width: 720px)";
@@ -91,7 +93,10 @@ export function mount(container, ctx) {
   handle.themeWas = handle.themeMeta?.getAttribute("content") ?? null;
   setFlood(DEFAULT_FLOOD);
   // Closing the tab or switching apps on a phone may never reach unmount.
-  const saveOnHide = () => { if (handle?.cur) saveEntry(handle.cur); };
+  const saveOnHide = () => {
+    if (handle?.cur) saveEntry(handle.cur);
+    syncOnHide();
+  };
   const saveWhenHidden = () => { if (document.visibilityState === "hidden") saveOnHide(); };
   window.addEventListener("pagehide", saveOnHide);
   document.addEventListener("visibilitychange", saveWhenHidden);
@@ -115,6 +120,7 @@ export function mount(container, ctx) {
   }
   fitViewport();
   showPicker();
+  syncNow(); // anything left over from earlier sessions or a server that was down
 }
 
 export function unmount() {
@@ -1344,6 +1350,15 @@ function paintTransport() {
 
 // --- history --------------------------------------------------------------------
 
+// The history also goes to the stats server, in the background (see stats-sync.js).
+const syncIO = { loadHistory: loadLetraHistory, loadSynced: loadLetraSynced, saveSynced: saveLetraSynced };
+const syncNow = () => { void syncPlays(getAccessToken, syncIO); };
+const syncScheduler = createScheduler(syncNow);
+// The page is going away: no time to refresh a token, use the stored one.
+const syncOnHide = () => {
+  void syncPlays(() => loadTokens()?.access_token ?? null, { ...syncIO, keepalive: true });
+};
+
 /**
  * Writes this song's play to the history on this device, once the player typed
  * anything. Called again as the play goes on; the record is replaced, not added.
@@ -1364,6 +1379,7 @@ function saveEntry(entry) {
   });
   try {
     saveLetraHistory(upsertRecord(loadLetraHistory(), record));
+    syncScheduler.schedule();
   } catch {
     // History is a bonus: a full or blocked storage never stops the game.
   }

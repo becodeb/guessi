@@ -13,6 +13,7 @@ const KEYS = {
   manualLyrics: `${PREFIX}manualLyrics`,
   aiForms: `${PREFIX}aiForms`,
   letraHistory: `${PREFIX}letraHistory`,
+  letraSynced: `${PREFIX}letraSynced`,
 };
 
 // v1 nested a full album copy (covers included) inside every track and kept
@@ -240,4 +241,16 @@ export function loadLetraHistory() {
 /** Returns false when the browser refused the write (quota, private mode). */
 export function saveLetraHistory(list) {
   return write(KEYS.letraHistory, list);
+}
+
+// --- which history records the stats server already has (see stats-sync.js) -----
+
+/** `{ "<play id>": "<endedAt that was sent>" }` */
+export function loadLetraSynced() {
+  const v = read(KEYS.letraSynced, {});
+  return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+}
+
+export function saveLetraSynced(map) {
+  return write(KEYS.letraSynced, map);
 }

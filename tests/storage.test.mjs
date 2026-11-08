@@ -20,7 +20,7 @@ globalThis.localStorage = {
   get length() { return store.size; },
 };
 
-const { loadLibrary, saveLibrary } = await import("../src/storage.js");
+const { loadLibrary, saveLibrary, loadLetraSynced, saveLetraSynced } = await import("../src/storage.js");
 
 const LIB_KEY = "deoido.v1.library";
 let passed = 0;
@@ -200,6 +200,20 @@ function makeLib(trackCount, poolCount = trackCount) {
 {
   store.clear();
   check("no library: load returns null", loadLibrary(), null);
+}
+
+// --- which plays the stats server has ----------------------------------------
+
+{
+  store.clear();
+  check("synced: empty by default", loadLetraSynced(), {});
+  check("synced: save reports success", saveLetraSynced({ a: "2026-11-08T20:00:00.000Z" }), true);
+  check("synced: round trip", loadLetraSynced(), { a: "2026-11-08T20:00:00.000Z" });
+  check("synced: stored under its own key", store.has("deoido.v1.letraSynced"), true);
+  store.set("deoido.v1.letraSynced", "[1,2]");
+  check("synced: an array is not a map", loadLetraSynced(), {});
+  store.set("deoido.v1.letraSynced", "{oops");
+  check("synced: corrupt json", loadLetraSynced(), {});
 }
 
 // --- summary -----------------------------------------------------------------
