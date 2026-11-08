@@ -27,9 +27,9 @@ their Spotify account, and expose what a future progress/friends screen needs.
 
 ## Tasks
 
-- [ ] S1 Server: `server/` with Express app, SQLite schema, Spotify-token auth, endpoints, tests, Dockerfile. Route: delegated.
-- [ ] S2 Compose + nginx proxy + healthcheck. Route: delegated with S1.
-- [ ] S3 Client sync from the game, never blocking. Route: delegated with S1.
+- [x] S1 Server: `server/` with Express app, SQLite schema, Spotify-token auth, endpoints, tests, Dockerfile. Route: delegated.
+- [x] S2 Compose + nginx proxy + healthcheck. Route: delegated with S1.
+- [x] S3 Client sync from the game, never blocking. Route: delegated with S1.
 - [ ] S4 Deploy and verify persistence across a redeploy. Route: parent.
 
 ## S1 spec
@@ -87,7 +87,9 @@ plus a request log to assert syncing happens and never blocks typing.
 
 ## Progress
 
-Nothing implemented yet.
+S1-S3 in 3822499, c922377, 65d0865, f8773ae. Writer ran the real compose locally: both
+services healthy, health 200, bad token 401, app served with api down, dbCreatedAt kept
+after down/up. Parent reran root tests (pass) and server tests (16/16).
 
 ## Next step
 
