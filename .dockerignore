@@ -1,9 +1,12 @@
 .git
 .gitignore
 .atl
-node_modules
+**/node_modules
 docker-compose.yml
 openspec
+odd
 docs
 tests
+server/test
+server/data
 *.md

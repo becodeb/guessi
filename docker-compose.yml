@@ -8,9 +8,33 @@ services:
       - SERVICE_FQDN_WEB
     expose:
       - "80"
+    # Start order only: the app is served even when the api is down.
+    depends_on:
+      - api
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/data/guessi.db
+    expose:
+      - "3000"
+    volumes:
+      - guessi-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  guessi-data:
